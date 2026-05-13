@@ -1,6 +1,7 @@
 import type { AiAnswer, DatasetType, MetricsResponse } from "../shared/types";
-import { createAgentRun, type OrgData } from "./store";
-import { formatCurrency, now } from "./utils";
+import type { AgentRun } from "../shared/types";
+import type { OrgData } from "./store";
+import { formatCurrency, id, now } from "./utils";
 
 export async function answerQuestion(params: {
   organizationId: string;
@@ -8,7 +9,17 @@ export async function answerQuestion(params: {
   metrics: MetricsResponse;
   data: OrgData;
 }): Promise<AiAnswer> {
-  const run = createAgentRun(params.organizationId, { question: params.question, period: params.metrics.period }, "user_question");
+  const run: AgentRun = {
+    id: id("run"),
+    organizationId: params.organizationId,
+    agentName: "Business Analyst Agent",
+    triggerType: "user_question",
+    input: { question: params.question, period: params.metrics.period },
+    status: "running",
+    createdAt: now(),
+    updatedAt: now()
+  };
+  params.data.agentRuns.unshift(run);
   try {
     const answer = await callModel(params.question, params.metrics);
     const output = answer ?? groundedAnswer(params.question, params.metrics);
