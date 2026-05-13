@@ -2,7 +2,7 @@ import { AlertTriangle, BarChart3, Bot, Database, FileText, Lightbulb, Loader2, 
 import { useEffect, useMemo, useState } from "react";
 import { Area, AreaChart, Bar, BarChart, CartesianGrid, ResponsiveContainer, Tooltip, XAxis, YAxis } from "recharts";
 import type { AiAnswer, DatasetType, FileUpload, MetricsResponse, Organization, Recommendation, Report } from "../shared/types";
-import { askAi, generateReport, getAlerts, getMetrics, getOrganization, getRecommendations, getReports, getUploads, uploadCsv } from "./api";
+import { askAi, generateReport, getAlerts, getMetrics, getOrganization, getRecommendations, getReports, getUploads, login, setToken, syncStripe, uploadCsv } from "./api";
 
 const datasetTypes: Array<{ value: DatasetType; label: string }> = [
   { value: "customers", label: "Customers" },
@@ -30,6 +30,8 @@ export function App() {
   const [end, setEnd] = useState(dateDaysAgo(0));
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+  const [authed, setAuthed] = useState(Boolean(localStorage.getItem("bp_token")));
+  const [syncMessage, setSyncMessage] = useState<string>("");
 
   async function refresh() {
     setLoading(true);
@@ -57,16 +59,19 @@ export function App() {
   }
 
   useEffect(() => {
-    void refresh();
-  }, [start, end]);
+    if (authed) void refresh();
+  }, [start, end, authed]);
 
   const tabs = [
     ["dashboard", BarChart3, "Dashboard"],
     ["ask", Bot, "Ask AI"],
     ["sources", Database, "Data Sources"],
     ["reports", FileText, "Reports"],
-    ["recommendations", Lightbulb, "Recommendations"]
+    ["recommendations", Lightbulb, "Recommendations"],
+    ["settings", Database, "Settings"]
   ] as const;
+
+  if (!authed) return <LoginGate onAuthed={() => setAuthed(true)} />;
 
   return (
     <main>
@@ -108,6 +113,45 @@ export function App() {
         {active === "sources" ? <DataSources uploads={uploads} refresh={refresh} /> : null}
         {active === "reports" ? <Reports reports={reports} start={start} end={end} refresh={refresh} /> : null}
         {active === "recommendations" ? <Recommendations recommendations={recommendations} /> : null}
+        {active === "settings" ? <Settings syncMessage={syncMessage} onSync={async (key) => {
+          const result = await syncStripe(key || undefined, 25);
+          setSyncMessage(`Synced ${result.syncedCharges} new charges out of ${result.scannedCharges} scanned.`);
+          await refresh();
+        }} /> : null}
+      </section>
+    </main>
+  );
+}
+
+function LoginGate({ onAuthed }: { onAuthed: () => void }) {
+  const [email, setEmail] = useState("owner@businesspulse.local");
+  const [password, setPassword] = useState("demo1234");
+  const [error, setError] = useState("");
+  const [busy, setBusy] = useState(false);
+  return (
+    <main>
+      <section className="workspace">
+        <header className="topbar"><h1>BusinessPulse AI Login</h1></header>
+        <section className="panel" style={{ maxWidth: 460 }}>
+          <div className="stack">
+            <input value={email} onChange={(event) => setEmail(event.target.value)} placeholder="Email" />
+            <input value={password} onChange={(event) => setPassword(event.target.value)} placeholder="Password" type="password" />
+            {error ? <div className="notice error">{error}</div> : null}
+            <button className="primary" onClick={async () => {
+              setBusy(true);
+              setError("");
+              try {
+                const response = await login(email, password);
+                setToken(response.token);
+                onAuthed();
+              } catch (err) {
+                setError(err instanceof Error ? err.message : "Login failed");
+              } finally {
+                setBusy(false);
+              }
+            }}>{busy ? "Signing in..." : "Sign in"}</button>
+          </div>
+        </section>
       </section>
     </main>
   );
@@ -326,6 +370,29 @@ function Recommendations({ recommendations }: { recommendations: Recommendation[
         {recommendations.map((rec) => <StatusItem key={rec.id} title={rec.title} meta={rec.priority} body={`${rec.description} Expected impact: ${rec.expectedImpact}`} />)}
       </div>
     </Panel>
+  );
+}
+
+function Settings({ onSync, syncMessage }: { onSync: (key: string) => Promise<void>; syncMessage: string }) {
+  const [stripeKey, setStripeKey] = useState("");
+  const [busy, setBusy] = useState(false);
+  return (
+    <div className="stack">
+      <Panel title="Stripe Integration">
+        <div className="stack">
+          <input value={stripeKey} onChange={(event) => setStripeKey(event.target.value)} placeholder="sk_live... or leave blank for STRIPE_SECRET_KEY env" />
+          <button className="primary align-start" disabled={busy} onClick={async () => {
+            setBusy(true);
+            try {
+              await onSync(stripeKey.trim());
+            } finally {
+              setBusy(false);
+            }
+          }}>{busy ? "Syncing..." : "Sync Stripe Charges"}</button>
+          {syncMessage ? <div className="notice">{syncMessage}</div> : null}
+        </div>
+      </Panel>
+    </div>
   );
 }
 

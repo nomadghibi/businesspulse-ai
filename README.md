@@ -24,6 +24,25 @@ Example `DATABASE_URL`:
 postgresql://localhost:5432/businesspulse_ai
 ```
 
+## Auth And Roles
+
+- Login endpoint: `POST /api/auth/login`
+- Protected endpoints require `Authorization: Bearer <token>`
+- Roles enforced server-side:
+  - `owner` and `admin`: write actions (upload, report generation, integration sync)
+  - `viewer`: read-only dashboards and Ask AI
+
+Default local demo login:
+
+- Email: `owner@businesspulse.local`
+- Password: `demo1234`
+
+## First Live Integration
+
+- Endpoint: `POST /api/integrations/stripe/sync`
+- Inputs: optional `secretKey`, optional `limit`
+- Behavior: fetches charges from Stripe and ingests them as revenue transactions
+
 ## Build And Test
 
 ```bash

@@ -1,12 +1,20 @@
 import type { AiAnswer, Alert, DatasetType, FileUpload, MetricsResponse, Organization, Recommendation, Report } from "../shared/types";
 
-const ORG_HEADER = "org-demo-home-services";
+const TOKEN_KEY = "bp_token";
+
+function getToken() {
+  return localStorage.getItem(TOKEN_KEY) ?? "";
+}
+export function setToken(token: string) {
+  localStorage.setItem(TOKEN_KEY, token);
+}
 
 async function request<T>(path: string, init?: RequestInit): Promise<T> {
+  const token = getToken();
   const response = await fetch(`/api${path}`, {
     ...init,
     headers: {
-      "x-organization-id": ORG_HEADER,
+      ...(token ? { Authorization: `Bearer ${token}` } : {}),
       ...(init?.body instanceof FormData ? {} : { "Content-Type": "application/json" }),
       ...init?.headers
     }
@@ -16,6 +24,13 @@ async function request<T>(path: string, init?: RequestInit): Promise<T> {
     throw new Error(body.error ?? `Request failed: ${response.status}`);
   }
   return response.json() as Promise<T>;
+}
+
+export function login(email: string, password: string) {
+  return request<{ token: string; organizationId: string; role: string; email: string }>("/auth/login", {
+    method: "POST",
+    body: JSON.stringify({ email, password })
+  });
 }
 
 export function getOrganization() {
@@ -55,4 +70,11 @@ export function getAlerts() {
 
 export function getRecommendations() {
   return request<Recommendation[]>("/recommendations");
+}
+
+export function syncStripe(secretKey?: string, limit = 25) {
+  return request<{ syncedCharges: number; scannedCharges: number }>("/integrations/stripe/sync", {
+    method: "POST",
+    body: JSON.stringify({ secretKey, limit })
+  });
 }
