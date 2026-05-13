@@ -71,6 +71,31 @@ app.post("/api/integrations/stripe/webhook", express.raw({ type: "application/js
         });
       }
     }
+    if (event.type === "checkout.session.completed") {
+      const plan = String(object.metadata?.plan ?? "starter");
+      const status = String(object.payment_status === "paid" ? "active" : "trialing");
+      await storage.upsertOrganizationPlan(organizationId, plan, status);
+      await storage.trackEvent({
+        organizationId,
+        eventName: "billing_checkout_completed",
+        payload: { sessionId: object.id, plan, status }
+      });
+    }
+    if (event.type === "customer.subscription.updated" || event.type === "customer.subscription.created") {
+      const plan = String(object.metadata?.plan ?? "starter");
+      const stripeStatus = String(object.status ?? "");
+      const normalizedStatus =
+        stripeStatus === "active" ? "active" :
+        stripeStatus === "trialing" ? "trialing" :
+        stripeStatus === "past_due" ? "past_due" :
+        stripeStatus === "canceled" || stripeStatus === "unpaid" ? "canceled" : "trialing";
+      await storage.upsertOrganizationPlan(organizationId, plan, normalizedStatus);
+      await storage.trackEvent({
+        organizationId,
+        eventName: "billing_subscription_updated",
+        payload: { subscriptionId: object.id, plan, status: normalizedStatus }
+      });
+    }
     await storage.saveOrgData(organizationId, data);
     res.json({ received: true });
   } catch (error) {
@@ -228,6 +253,8 @@ app.post("/api/billing/checkout", async (req, res, next) => {
     params.set("cancel_url", `${appUrl}?checkout=cancel`);
     params.set("metadata[organization_id]", organizationId);
     params.set("metadata[plan]", body.plan);
+    params.set("subscription_data[metadata][organization_id]", organizationId);
+    params.set("subscription_data[metadata][plan]", body.plan);
     const priceKey = `STRIPE_PRICE_${body.plan.toUpperCase()}`;
     const priceId = process.env[priceKey];
     if (priceId) {
