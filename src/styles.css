@@ -254,6 +254,16 @@ textarea { min-height: 110px; width: 100%; resize: vertical; }
   border-radius: 8px;
   padding: 18px;
 }
+.setup-panel { display: grid; gap: 14px; }
+.setup-header {
+  display: flex;
+  justify-content: space-between;
+  gap: 14px;
+  align-items: flex-start;
+}
+.setup-score { min-width: 150px; text-align: right; }
+.setup-score strong { display: block; font-size: 30px; }
+.setup-score span { color: #5a665f; font-size: 13px; text-transform: uppercase; }
 .card { display: grid; gap: 8px; min-height: 126px; }
 .card span, .eyebrow { color: #66746d; font-size: 13px; text-transform: uppercase; letter-spacing: 0; font-weight: 700; }
 .card strong { font-size: 26px; }
@@ -296,6 +306,7 @@ textarea { min-height: 110px; width: 100%; resize: vertical; }
 .table-head, .table-row { display: grid; grid-template-columns: 2fr 1fr 0.6fr 0.8fr; gap: 12px; padding: 10px 12px; align-items: center; }
 .table-head { color: #66746d; font-size: 13px; font-weight: 700; text-transform: uppercase; }
 .table-row { background: #f8faf8; border-radius: 8px; }
+.setup-table .table-head, .setup-table .table-row { grid-template-columns: 1.5fr 1fr; }
 
 .bullets { margin: 0; padding-left: 20px; color: #4a554f; line-height: 1.7; }
 .empty, .notice, .loading { padding: 18px; border-radius: 8px; background: #eef4f1; color: #43514a; }
@@ -315,4 +326,6 @@ textarea { min-height: 110px; width: 100%; resize: vertical; }
   .stats, .feature-grid, .pricing-row { grid-template-columns: 1fr; }
   .hero-content h1 { font-size: clamp(34px, 12vw, 54px); }
   .hero-actions { flex-wrap: wrap; }
+  .setup-header { flex-direction: column; }
+  .setup-score { text-align: left; }
 }

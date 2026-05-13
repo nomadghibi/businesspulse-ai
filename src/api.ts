@@ -96,6 +96,16 @@ export function getUploads() {
   return request<FileUpload[]>("/uploads");
 }
 
+export interface OnboardingStatus {
+  firstUploadAt: string | null;
+  coreDatasetsCompletedAt: string | null;
+  timeToFirstInsightSeconds: number | null;
+}
+
+export function getOnboardingStatus() {
+  return request<OnboardingStatus>("/onboarding-status");
+}
+
 export function getAlerts() {
   return request<Alert[]>("/alerts");
 }

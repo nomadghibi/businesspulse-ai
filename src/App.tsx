@@ -2,7 +2,7 @@ import { AlertTriangle, ArrowRight, BarChart3, Bot, CheckCircle2, Database, File
 import { useEffect, useMemo, useState } from "react";
 import { Area, AreaChart, Bar, BarChart, CartesianGrid, ResponsiveContainer, Tooltip, XAxis, YAxis } from "recharts";
 import type { AiAnswer, ColumnMapping, CsvPreview, DatasetType, FileUpload, MetricsResponse, Organization, Recommendation, Report } from "../shared/types";
-import { askAi, changePassword, clearToken, commitUploadCsv, createCheckout, type AppUser, generateReport, getAlerts, getMetrics, getOrganization, getRecommendations, getReports, getUploads, getUsers, inviteUser, login, logout, previewUploadCsv, requestDemo, setToken, startTrial, syncStripe, trackEvent, trackPublicEvent, updateUserRole, updateUserStatus } from "./api";
+import { askAi, changePassword, clearToken, commitUploadCsv, createCheckout, type AppUser, generateReport, getAlerts, getMetrics, getOnboardingStatus, getOrganization, getRecommendations, getReports, getUploads, getUsers, inviteUser, login, logout, type OnboardingStatus, previewUploadCsv, requestDemo, setToken, startTrial, syncStripe, trackEvent, trackPublicEvent, updateUserRole, updateUserStatus } from "./api";
 
 const datasetTypes: Array<{ value: DatasetType; label: string }> = [
   { value: "customers", label: "Customers" },
@@ -31,6 +31,7 @@ export function App() {
   const [metrics, setMetrics] = useState<MetricsResponse | null>(null);
   const [uploads, setUploads] = useState<FileUpload[]>([]);
   const [reports, setReports] = useState<Report[]>([]);
+  const [onboarding, setOnboarding] = useState<OnboardingStatus | null>(null);
   const [recommendations, setRecommendations] = useState<Recommendation[]>([]);
   const [alerts, setAlerts] = useState<Array<{ title: string; severity: string; description: string }>>([]);
   const [active, setActive] = useState("dashboard");
@@ -51,13 +52,14 @@ export function App() {
     setLoading(true);
     setError(null);
     try {
-      const [orgRes, metricsRes, uploadsRes, reportsRes, recsRes, alertsRes] = await Promise.all([
+      const [orgRes, metricsRes, uploadsRes, reportsRes, recsRes, alertsRes, onboardingRes] = await Promise.all([
         getOrganization(),
         getMetrics(start, end),
         getUploads(),
         getReports(),
         getRecommendations(),
-        getAlerts()
+        getAlerts(),
+        getOnboardingStatus()
       ]);
       const usersRes = await getUsers().catch(() => [] as AppUser[]);
       setOrg(orgRes);
@@ -66,6 +68,7 @@ export function App() {
       setReports(reportsRes);
       setRecommendations(recsRes);
       setAlerts(alertsRes);
+      setOnboarding(onboardingRes);
       setUsers(usersRes);
     } catch (err) {
       setError(err instanceof Error ? err.message : "Unable to load dashboard");
@@ -148,7 +151,7 @@ export function App() {
         {error ? <div className="notice error">{error}</div> : null}
         {loading && !metrics ? <Loading /> : null}
 
-        {metrics && active === "dashboard" ? <Dashboard metrics={metrics} alerts={alerts} recommendations={recommendations} /> : null}
+        {metrics && active === "dashboard" ? <Dashboard metrics={metrics} uploads={uploads} alerts={alerts} recommendations={recommendations} onboarding={onboarding} onOpenSources={() => setActive("sources")} /> : null}
         {metrics && active === "ask" ? <AskAI start={start} end={end} /> : null}
         {active === "sources" ? <DataSources uploads={uploads} refresh={refresh} /> : null}
         {active === "reports" ? <Reports reports={reports} start={start} end={end} refresh={refresh} /> : null}
@@ -330,9 +333,62 @@ function Loading() {
   );
 }
 
-function Dashboard({ metrics, alerts, recommendations }: { metrics: MetricsResponse; alerts: Array<{ title: string; severity: string; description: string }>; recommendations: Recommendation[] }) {
+function Dashboard({
+  metrics,
+  uploads,
+  alerts,
+  recommendations,
+  onboarding,
+  onOpenSources
+}: {
+  metrics: MetricsResponse;
+  uploads: FileUpload[];
+  alerts: Array<{ title: string; severity: string; description: string }>;
+  recommendations: Recommendation[];
+  onboarding: OnboardingStatus | null;
+  onOpenSources: () => void;
+}) {
+  const requiredDatasets: DatasetType[] = ["jobs", "leads", "revenue", "marketing_spend"];
+  const latestByDataset = new Map<DatasetType, FileUpload>();
+  for (const upload of uploads) {
+    if (!latestByDataset.has(upload.datasetType)) latestByDataset.set(upload.datasetType, upload);
+  }
+  const completed = requiredDatasets.filter((dataset) => latestByDataset.get(dataset)?.status === "processed").length;
+  const completionScore = Math.round((completed / requiredDatasets.length) * 80);
+  const qualityIssueCount = requiredDatasets.reduce((total, dataset) => total + (latestByDataset.get(dataset)?.qualityIssues.length ?? 0), 0);
+  const qualityScore = Math.max(0, 20 - qualityIssueCount * 2);
+  const setupScore = Math.max(0, Math.min(100, completionScore + qualityScore));
+  const timeToFirstInsight = formatTimeToFirstInsight(onboarding?.timeToFirstInsightSeconds ?? null, onboarding?.firstUploadAt ?? null);
+
   return (
     <div className="stack">
+      <section className="panel setup-panel">
+        <div className="setup-header">
+          <div>
+            <h2>First Import Checklist</h2>
+            <p>Upload the core datasets to increase analysis reliability and recommendation quality.</p>
+          </div>
+          <div className="setup-score">
+            <strong>{setupScore}%</strong>
+            <span>Data Readiness</span>
+          </div>
+        </div>
+        <div className="table setup-table">
+          <div className="table-head"><span>Dataset</span><span>Status</span></div>
+          {requiredDatasets.map((dataset) => {
+            const row = latestByDataset.get(dataset);
+            const ok = row?.status === "processed";
+            return (
+              <div className="table-row" key={dataset}>
+                <span>{dataset.replace("_", " ")}</span>
+                <span>{ok ? "complete" : row ? row.status : "missing"}</span>
+              </div>
+            );
+          })}
+        </div>
+        <p><strong>Time to first insight:</strong> {timeToFirstInsight}</p>
+        <button className="primary align-start" onClick={onOpenSources}>Go To Data Sources</button>
+      </section>
       <section className="brief">
         <div>
           <span className="eyebrow">Executive brief</span>
@@ -396,6 +452,16 @@ function Dashboard({ metrics, alerts, recommendations }: { metrics: MetricsRespo
       </section>
     </div>
   );
+}
+
+function formatTimeToFirstInsight(seconds: number | null, firstUploadAt: string | null) {
+  if (typeof seconds === "number") {
+    if (seconds < 60) return `${seconds}s`;
+    if (seconds < 3600) return `${Math.round(seconds / 60)}m`;
+    return `${(seconds / 3600).toFixed(1)}h`;
+  }
+  if (firstUploadAt) return "In progress";
+  return "Not started";
 }
 
 function AskAI({ start, end }: { start: string; end: string }) {

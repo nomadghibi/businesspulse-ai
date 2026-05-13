@@ -421,6 +421,22 @@ app.get("/api/uploads", async (req, res, next) => {
   }
 });
 
+app.get("/api/onboarding-status", async (req, res, next) => {
+  try {
+    const progress = await storage.getOnboardingProgress(org(req));
+    const timeToFirstInsightSeconds =
+      progress.firstUploadAt && progress.coreDatasetsCompletedAt
+        ? Math.max(0, Math.round((Date.parse(progress.coreDatasetsCompletedAt) - Date.parse(progress.firstUploadAt)) / 1000))
+        : null;
+    res.json({
+      ...progress,
+      timeToFirstInsightSeconds
+    });
+  } catch (error) {
+    next(error);
+  }
+});
+
 app.post("/api/upload", upload.single("file"), async (req, res, next) => {
   try {
     requireRole(req, res, ["owner", "admin"]);
@@ -457,6 +473,19 @@ app.post("/api/upload", upload.single("file"), async (req, res, next) => {
       data
     });
     await storage.saveOrgData(organizationId, data);
+    const progress = await storage.getOnboardingProgress(organizationId);
+    const requiredDatasets = new Set(["jobs", "leads", "revenue", "marketing_spend"]);
+    const latestByDataset = new Map<string, { status: string }>();
+    for (const row of data.uploads) {
+      if (!latestByDataset.has(row.datasetType)) latestByDataset.set(row.datasetType, { status: row.status });
+    }
+    const coreReady = [...requiredDatasets].every((dataset) => latestByDataset.get(dataset)?.status === "processed");
+    const onboardingUpdate: { firstUploadAt?: string; coreDatasetsCompletedAt?: string } = {};
+    if (!progress.firstUploadAt) onboardingUpdate.firstUploadAt = new Date().toISOString();
+    if (coreReady && !progress.coreDatasetsCompletedAt) onboardingUpdate.coreDatasetsCompletedAt = new Date().toISOString();
+    if (Object.keys(onboardingUpdate).length) {
+      await storage.upsertOnboardingProgress(organizationId, onboardingUpdate);
+    }
     res.json(result);
   } catch (error) {
     next(error);

@@ -50,6 +50,11 @@ export interface Storage {
   findOrganizationIdByStripeRefs(refs: { stripeCustomerId?: string; stripeSubscriptionId?: string; stripeCheckoutSessionId?: string }): Promise<string | null>;
   hasWebhookEventProcessed(eventId: string, provider: string): Promise<boolean>;
   markWebhookEventProcessed(input: { eventId: string; provider: string; organizationId?: string; eventType: string }): Promise<boolean>;
+  getOnboardingProgress(organizationId: string): Promise<{ firstUploadAt: string | null; coreDatasetsCompletedAt: string | null }>;
+  upsertOnboardingProgress(
+    organizationId: string,
+    progress: { firstUploadAt?: string; coreDatasetsCompletedAt?: string }
+  ): Promise<void>;
 }
 
 class MemoryStorage implements Storage {
@@ -62,6 +67,7 @@ class MemoryStorage implements Storage {
   private events: Array<{ id: string; organizationId?: string; eventName: string; payload: Record<string, unknown> }> = [];
   private plans = new Map<string, { plan: string; status: string }>([[DEMO_ORG_ID, { plan: "starter", status: "trialing" }]]);
   private processedWebhookEvents = new Set<string>();
+  private onboarding = new Map<string, { firstUploadAt: string | null; coreDatasetsCompletedAt: string | null }>();
   async initialize() {}
   async getOrganizations() {
     return organizations;
@@ -188,6 +194,16 @@ class MemoryStorage implements Storage {
     this.processedWebhookEvents.add(key);
     return true;
   }
+  async getOnboardingProgress(organizationId: string) {
+    return this.onboarding.get(organizationId) ?? { firstUploadAt: null, coreDatasetsCompletedAt: null };
+  }
+  async upsertOnboardingProgress(organizationId: string, progress: { firstUploadAt?: string; coreDatasetsCompletedAt?: string }) {
+    const existing = this.onboarding.get(organizationId) ?? { firstUploadAt: null, coreDatasetsCompletedAt: null };
+    this.onboarding.set(organizationId, {
+      firstUploadAt: progress.firstUploadAt ?? existing.firstUploadAt,
+      coreDatasetsCompletedAt: progress.coreDatasetsCompletedAt ?? existing.coreDatasetsCompletedAt
+    });
+  }
 }
 
 class PostgresStorage implements Storage {
@@ -202,6 +218,7 @@ class PostgresStorage implements Storage {
     await this.applyMigration("003_conversion_analytics_billing", resolve(process.cwd(), "server/migrations/003_conversion_analytics_billing.sql"));
     await this.applyMigration("004_webhook_idempotency", resolve(process.cwd(), "server/migrations/004_webhook_idempotency.sql"));
     await this.applyMigration("005_user_password_reset_flag", resolve(process.cwd(), "server/migrations/005_user_password_reset_flag.sql"));
+    await this.applyMigration("006_onboarding_progress", resolve(process.cwd(), "server/migrations/006_onboarding_progress.sql"));
 
     const org = organizations[0];
     const existing = await this.pool.query("select id from organizations where id = $1", [DEMO_ORG_ID]);
@@ -531,6 +548,31 @@ class PostgresStorage implements Storage {
       [input.eventId, input.provider, input.organizationId ?? null, input.eventType]
     );
     return result.rowCount === 1;
+  }
+  async getOnboardingProgress(organizationId: string) {
+    const { rows } = await this.pool.query<{ first_upload_at: Date | null; core_datasets_completed_at: Date | null }>(
+      `select first_upload_at, core_datasets_completed_at
+       from onboarding_progress
+       where organization_id = $1`,
+      [organizationId]
+    );
+    const row = rows[0];
+    if (!row) return { firstUploadAt: null, coreDatasetsCompletedAt: null };
+    return {
+      firstUploadAt: row.first_upload_at ? row.first_upload_at.toISOString() : null,
+      coreDatasetsCompletedAt: row.core_datasets_completed_at ? row.core_datasets_completed_at.toISOString() : null
+    };
+  }
+  async upsertOnboardingProgress(organizationId: string, progress: { firstUploadAt?: string; coreDatasetsCompletedAt?: string }) {
+    await this.pool.query(
+      `insert into onboarding_progress (organization_id, first_upload_at, core_datasets_completed_at, updated_at)
+       values ($1, $2, $3, now())
+       on conflict (organization_id) do update set
+         first_upload_at = coalesce(onboarding_progress.first_upload_at, excluded.first_upload_at),
+         core_datasets_completed_at = coalesce(onboarding_progress.core_datasets_completed_at, excluded.core_datasets_completed_at),
+         updated_at = now()`,
+      [organizationId, progress.firstUploadAt ?? null, progress.coreDatasetsCompletedAt ?? null]
+    );
   }
 
   private async selectPayloads(table: string, organizationId: string) {
