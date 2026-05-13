@@ -46,6 +46,7 @@ Default local demo login:
 - Credential source: `STRIPE_SECRET_KEY` from server environment only
 - Webhook endpoint: `POST /api/integrations/stripe/webhook`
 - Webhook events handled: `payment_intent.succeeded`, `charge.succeeded`, `charge.refunded`, `checkout.session.completed`, `customer.subscription.created`, `customer.subscription.updated`
+- Webhook processing is idempotent by Stripe event ID (duplicate deliveries are ignored)
 - Billing checkout scaffold endpoint: `POST /api/billing/checkout`
 - Billing activation endpoint: `POST /api/billing/activate`
 

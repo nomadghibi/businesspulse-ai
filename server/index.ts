@@ -35,10 +35,18 @@ app.post("/api/integrations/stripe/webhook", express.raw({ type: "application/js
     if (expectedBuffer.length !== providedBuffer.length || !crypto.timingSafeEqual(expectedBuffer, providedBuffer)) {
       return res.status(400).json({ error: "Invalid webhook signature" });
     }
-    const event = JSON.parse(raw.toString("utf8")) as { type: string; data?: { object?: any } };
+    const event = JSON.parse(raw.toString("utf8")) as { id?: string; type: string; data?: { object?: any } };
+    if (!event.id) return res.status(400).json({ error: "Missing webhook event id" });
     const object = event.data?.object;
     if (!object?.metadata?.organization_id) return res.status(200).json({ received: true, ignored: "missing organization_id metadata" });
     const organizationId = String(object.metadata.organization_id);
+    const shouldProcess = await storage.markWebhookEventProcessed({
+      eventId: event.id,
+      provider: "stripe",
+      organizationId,
+      eventType: event.type
+    });
+    if (!shouldProcess) return res.status(200).json({ received: true, duplicate: true });
     const data = await storage.getOrgData(organizationId);
     const createdAt = new Date().toISOString();
     if (event.type === "payment_intent.succeeded" || event.type === "charge.succeeded") {

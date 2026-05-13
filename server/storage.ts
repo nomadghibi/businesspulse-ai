@@ -34,6 +34,7 @@ export interface Storage {
   trackEvent(input: { organizationId?: string; eventName: string; payload: Record<string, unknown> }): Promise<void>;
   getOrganizationPlan(organizationId: string): Promise<{ plan: string; status: string }>;
   upsertOrganizationPlan(organizationId: string, plan: string, status: string): Promise<void>;
+  markWebhookEventProcessed(input: { eventId: string; provider: string; organizationId?: string; eventType: string }): Promise<boolean>;
 }
 
 class MemoryStorage implements Storage {
@@ -45,6 +46,7 @@ class MemoryStorage implements Storage {
   private demoRequests: Array<{ id: string; name: string; email: string; company?: string; message?: string }> = [];
   private events: Array<{ id: string; organizationId?: string; eventName: string; payload: Record<string, unknown> }> = [];
   private plans = new Map<string, { plan: string; status: string }>([[DEMO_ORG_ID, { plan: "starter", status: "trialing" }]]);
+  private processedWebhookEvents = new Set<string>();
   async initialize() {}
   async getOrganizations() {
     return organizations;
@@ -125,6 +127,12 @@ class MemoryStorage implements Storage {
   async upsertOrganizationPlan(organizationId: string, plan: string, status: string) {
     this.plans.set(organizationId, { plan, status });
   }
+  async markWebhookEventProcessed(input: { eventId: string; provider: string; organizationId?: string; eventType: string }) {
+    const key = `${input.provider}:${input.eventId}`;
+    if (this.processedWebhookEvents.has(key)) return false;
+    this.processedWebhookEvents.add(key);
+    return true;
+  }
 }
 
 class PostgresStorage implements Storage {
@@ -137,6 +145,7 @@ class PostgresStorage implements Storage {
     await this.applyMigration("001_normalized_schema", resolve(process.cwd(), "server/migrations/001_normalized_schema.sql"));
     await this.applyMigration("002_users_relational_and_indexes", resolve(process.cwd(), "server/migrations/002_users_relational_and_indexes.sql"));
     await this.applyMigration("003_conversion_analytics_billing", resolve(process.cwd(), "server/migrations/003_conversion_analytics_billing.sql"));
+    await this.applyMigration("004_webhook_idempotency", resolve(process.cwd(), "server/migrations/004_webhook_idempotency.sql"));
 
     const org = organizations[0];
     const existing = await this.pool.query("select id from organizations where id = $1", [DEMO_ORG_ID]);
@@ -355,6 +364,15 @@ class PostgresStorage implements Storage {
        on conflict (id) do update set plan = excluded.plan, status = excluded.status, updated_at = now()`,
       [`sub_${organizationId}`, organizationId, plan, status]
     );
+  }
+  async markWebhookEventProcessed(input: { eventId: string; provider: string; organizationId?: string; eventType: string }) {
+    const result = await this.pool.query(
+      `insert into processed_webhook_events (id, provider, organization_id, event_type)
+       values ($1, $2, $3, $4)
+       on conflict (id) do nothing`,
+      [input.eventId, input.provider, input.organizationId ?? null, input.eventType]
+    );
+    return result.rowCount === 1;
   }
 
   private async selectPayloads(table: string, organizationId: string) {
