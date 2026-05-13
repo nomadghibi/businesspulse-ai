@@ -13,7 +13,7 @@ const server = spawn(process.execPath, ["node_modules/tsx/dist/cli.mjs", "server
 
 try {
   await waitForHealth();
-  const login = await loginDemo();
+  const login = await createTrialAndLogin();
 
   const before = await getOnboarding(login.token);
   assert.equal(before.firstUploadAt, null);
@@ -52,14 +52,35 @@ async function waitForHealth() {
   throw new Error("API did not become ready for onboarding status test");
 }
 
-async function loginDemo() {
+async function createTrialAndLogin() {
+  const trialEmail = `trial.onboarding.${Date.now()}@example.com`;
+  const trialRes = await fetch(`${base}/api/public/trial-start`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ email: trialEmail, company: "Onboarding Test Co", source: "test" })
+  });
+  assert.equal(trialRes.status, 200);
+  const trial = await trialRes.json() as { ownerEmail: string; temporaryPassword: string };
+
   const res = await fetch(`${base}/api/auth/login`, {
     method: "POST",
     headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({ email: "owner@businesspulse.local", password: "demo1234" })
+    body: JSON.stringify({ email: trial.ownerEmail, password: trial.temporaryPassword })
   });
   assert.equal(res.status, 200);
-  return res.json() as Promise<{ token: string }>;
+  const login = await res.json() as { token: string };
+
+  const changePassword = await fetch(`${base}/api/auth/change-password`, {
+    method: "POST",
+    headers: {
+      "Content-Type": "application/json",
+      Authorization: `Bearer ${login.token}`
+    },
+    body: JSON.stringify({ currentPassword: trial.temporaryPassword, nextPassword: "newsecure123" })
+  });
+  assert.equal(changePassword.status, 200);
+
+  return login;
 }
 
 async function uploadDataset(token: string, datasetType: "jobs" | "leads" | "revenue" | "marketing_spend", csv: string) {

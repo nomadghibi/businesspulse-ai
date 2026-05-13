@@ -153,7 +153,7 @@ export function App() {
 
         {metrics && active === "dashboard" ? <Dashboard metrics={metrics} uploads={uploads} alerts={alerts} recommendations={recommendations} onboarding={onboarding} onOpenSources={() => setActive("sources")} /> : null}
         {metrics && active === "ask" ? <AskAI start={start} end={end} /> : null}
-        {active === "sources" ? <DataSources uploads={uploads} refresh={refresh} /> : null}
+        {active === "sources" ? <DataSources uploads={uploads} onboarding={onboarding} refresh={refresh} /> : null}
         {active === "reports" ? <Reports reports={reports} start={start} end={end} refresh={refresh} /> : null}
         {active === "recommendations" ? <Recommendations recommendations={recommendations} /> : null}
         {active === "settings" ? <Settings users={users} syncMessage={syncMessage} onSync={async () => {
@@ -530,13 +530,28 @@ function AskAI({ start, end }: { start: string; end: string }) {
   );
 }
 
-function DataSources({ uploads, refresh }: { uploads: FileUpload[]; refresh: () => Promise<void> }) {
+function DataSources({
+  uploads,
+  onboarding,
+  refresh
+}: {
+  uploads: FileUpload[];
+  onboarding: OnboardingStatus | null;
+  refresh: () => Promise<void>;
+}) {
   const [datasetType, setDatasetType] = useState<DatasetType>("jobs");
   const [busy, setBusy] = useState(false);
   const [pendingFile, setPendingFile] = useState<File | null>(null);
   const [preview, setPreview] = useState<CsvPreview | null>(null);
   const [mappingDraft, setMappingDraft] = useState<Record<string, string>>({});
   const [message, setMessage] = useState("");
+  const requiredDatasets: DatasetType[] = ["jobs", "leads", "revenue", "marketing_spend"];
+  const latestByDataset = new Map<DatasetType, FileUpload>();
+  for (const upload of uploads) {
+    if (!latestByDataset.has(upload.datasetType)) latestByDataset.set(upload.datasetType, upload);
+  }
+  const completed = requiredDatasets.filter((dataset) => latestByDataset.get(dataset)?.status === "processed").length;
+  const setupScore = Math.round((completed / requiredDatasets.length) * 100);
 
   async function onFile(file: File | null) {
     if (!file) return;
@@ -582,6 +597,24 @@ function DataSources({ uploads, refresh }: { uploads: FileUpload[]; refresh: () 
 
   return (
     <div className="stack">
+      <Panel title="Onboarding Progress">
+        <div className="stack">
+          <p>Data readiness: <strong>{setupScore}%</strong></p>
+          <p>Time to first insight: <strong>{formatTimeToFirstInsight(onboarding?.timeToFirstInsightSeconds ?? null, onboarding?.firstUploadAt ?? null)}</strong></p>
+          <div className="table">
+            <div className="table-head"><span>Dataset</span><span>Status</span></div>
+            {requiredDatasets.map((dataset) => {
+              const row = latestByDataset.get(dataset);
+              return (
+                <div className="table-row" key={dataset}>
+                  <span>{dataset.replace("_", " ")}</span>
+                  <span>{row?.status === "processed" ? "complete" : row ? row.status : "missing"}</span>
+                </div>
+              );
+            })}
+          </div>
+        </div>
+      </Panel>
       <Panel title="Upload CSV">
         <div className="upload-row">
           <select value={datasetType} onChange={(event) => setDatasetType(event.target.value as DatasetType)}>
