@@ -5,6 +5,7 @@ import { getOrgData as getMemoryOrgData, organizations, seedOrg, type OrgData } 
 import { createHash, randomBytes } from "node:crypto";
 import { readFile } from "node:fs/promises";
 import { resolve } from "node:path";
+import { compareSync, hashSync } from "bcryptjs";
 
 export type AuthRole = "owner" | "admin" | "viewer";
 export interface AuthUser {
@@ -31,8 +32,8 @@ export interface Storage {
 
 class MemoryStorage implements Storage {
   private sessions = new Map<string, AuthUser>();
-  private users = new Map<string, { userId: string; organizationId: string; email: string; role: AuthRole; disabled: boolean; password: string }>([
-    ["user_demo_owner", { userId: "user_demo_owner", organizationId: DEMO_ORG_ID, email: "owner@businesspulse.local", role: "owner", disabled: false, password: "demo1234" }]
+  private users = new Map<string, { userId: string; organizationId: string; email: string; role: AuthRole; disabled: boolean; passwordHash: string }>([
+    ["user_demo_owner", { userId: "user_demo_owner", organizationId: DEMO_ORG_ID, email: "owner@businesspulse.local", role: "owner", disabled: false, passwordHash: hashPassword("demo1234") }]
   ]);
   async initialize() {}
   async getOrganizations() {
@@ -59,7 +60,7 @@ class MemoryStorage implements Storage {
   }
   async login(email: string, password: string) {
     const found = [...this.users.values()].find((item) => item.email === email);
-    if (!found || found.password !== password || found.disabled) return null;
+    if (!found || !verifyPassword(password, found.passwordHash) || found.disabled) return null;
     const token = randomBytes(24).toString("hex");
     const authUser: AuthUser = {
       userId: found.userId,
@@ -81,7 +82,7 @@ class MemoryStorage implements Storage {
   }
   async inviteUser(organizationId: string, email: string, role: AuthRole, password: string) {
     const userId = `user_${crypto.randomUUID()}`;
-    this.users.set(userId, { userId, organizationId, email, role, disabled: false, password });
+    this.users.set(userId, { userId, organizationId, email, role, disabled: false, passwordHash: hashPassword(password) });
     return { userId, email, role };
   }
   async setUserRole(organizationId: string, userId: string, role: AuthRole) {
@@ -212,7 +213,12 @@ class PostgresStorage implements Storage {
   async login(email: string, password: string) {
     const { rows } = await this.pool.query<{ id: string; password_hash: string; disabled: boolean }>("select id, password_hash, disabled from users where email = $1", [email]);
     const user = rows[0];
-    if (!user || user.password_hash !== hashPassword(password) || user.disabled) return null;
+    if (!user || user.disabled) return null;
+    const valid = verifyPassword(password, user.password_hash);
+    if (!valid) return null;
+    if (!isBcryptHash(user.password_hash)) {
+      await this.pool.query("update users set password_hash = $2 where id = $1", [user.id, hashPassword(password)]);
+    }
     const membership = await this.pool.query<{ organization_id: string; role: AuthRole }>(
       "select organization_id, role from organization_members where user_id = $1 order by created_at asc limit 1",
       [user.id]
@@ -420,5 +426,14 @@ function hashToken(token: string) {
 }
 
 function hashPassword(password: string) {
-  return createHash("sha256").update(password).digest("hex");
+  return hashSync(password, 10);
+}
+
+function verifyPassword(password: string, storedHash: string) {
+  if (isBcryptHash(storedHash)) return compareSync(password, storedHash);
+  return createHash("sha256").update(password).digest("hex") === storedHash;
+}
+
+function isBcryptHash(hash: string) {
+  return hash.startsWith("$2a$") || hash.startsWith("$2b$") || hash.startsWith("$2y$");
 }
