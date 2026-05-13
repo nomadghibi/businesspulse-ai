@@ -28,7 +28,7 @@ export interface OrgData {
   agentRuns: AgentRun[];
 }
 
-const organizations: Organization[] = [
+export const organizations: Organization[] = [
   {
     id: DEMO_ORG_ID,
     name: "Demo Home Services Co.",
@@ -45,7 +45,7 @@ function daysAgo(days: number) {
   return date.toISOString();
 }
 
-function seedOrg(organizationId: string): OrgData {
+export function seedOrg(organizationId: string): OrgData {
   const createdAt = now();
   const customers = [
     ["C-100", "Avery Johnson", "Google Ads"],

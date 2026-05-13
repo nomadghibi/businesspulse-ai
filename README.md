@@ -13,6 +13,17 @@ Open `http://localhost:5173`.
 
 The API runs on `http://localhost:5055`. AI answers use `OPENAI_API_KEY` when configured and fall back to deterministic grounded analysis when no key is present.
 
+## Persistence Modes
+
+- If `DATABASE_URL` is set, the API runs in PostgreSQL mode and persists tenant state in database tables.
+- If `DATABASE_URL` is empty, the API runs in in-memory mode (non-persistent).
+
+Example `DATABASE_URL`:
+
+```text
+postgresql://localhost:5432/businesspulse_ai
+```
+
 ## Build And Test
 
 ```bash
