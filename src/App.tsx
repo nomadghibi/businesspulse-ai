@@ -121,8 +121,8 @@ export function App() {
         {active === "sources" ? <DataSources uploads={uploads} refresh={refresh} /> : null}
         {active === "reports" ? <Reports reports={reports} start={start} end={end} refresh={refresh} /> : null}
         {active === "recommendations" ? <Recommendations recommendations={recommendations} /> : null}
-        {active === "settings" ? <Settings users={users} syncMessage={syncMessage} onSync={async (key) => {
-          const result = await syncStripe(key || undefined, 25);
+        {active === "settings" ? <Settings users={users} syncMessage={syncMessage} onSync={async () => {
+          const result = await syncStripe(25);
           setSyncMessage(`Synced ${result.syncedCharges} new charges out of ${result.scannedCharges} scanned.`);
           await refresh();
         }} onUsersChanged={refresh} /> : null}
@@ -381,8 +381,7 @@ function Recommendations({ recommendations }: { recommendations: Recommendation[
   );
 }
 
-function Settings({ onSync, syncMessage, users, onUsersChanged }: { onSync: (key: string) => Promise<void>; syncMessage: string; users: AppUser[]; onUsersChanged: () => Promise<void> }) {
-  const [stripeKey, setStripeKey] = useState("");
+function Settings({ onSync, syncMessage, users, onUsersChanged }: { onSync: () => Promise<void>; syncMessage: string; users: AppUser[]; onUsersChanged: () => Promise<void> }) {
   const [inviteEmail, setInviteEmail] = useState("");
   const [inviteRole, setInviteRole] = useState<"owner" | "admin" | "viewer">("viewer");
   const [invitePassword, setInvitePassword] = useState("changeme123");
@@ -391,15 +390,15 @@ function Settings({ onSync, syncMessage, users, onUsersChanged }: { onSync: (key
     <div className="stack">
       <Panel title="Stripe Integration">
         <div className="stack">
-          <input value={stripeKey} onChange={(event) => setStripeKey(event.target.value)} placeholder="sk_live... or leave blank for STRIPE_SECRET_KEY env" />
           <button className="primary align-start" disabled={busy} onClick={async () => {
             setBusy(true);
             try {
-              await onSync(stripeKey.trim());
+              await onSync();
             } finally {
               setBusy(false);
             }
           }}>{busy ? "Syncing..." : "Sync Stripe Charges"}</button>
+          <p>Server uses `STRIPE_SECRET_KEY` from environment. Browser does not send Stripe credentials.</p>
           {syncMessage ? <div className="notice">{syncMessage}</div> : null}
         </div>
       </Panel>

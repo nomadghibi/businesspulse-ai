@@ -79,10 +79,10 @@ export function getRecommendations() {
   return request<Recommendation[]>("/recommendations");
 }
 
-export function syncStripe(secretKey?: string, limit = 25) {
+export function syncStripe(limit = 25) {
   return request<{ syncedCharges: number; scannedCharges: number }>("/integrations/stripe/sync", {
     method: "POST",
-    body: JSON.stringify({ secretKey, limit })
+    body: JSON.stringify({ limit })
   });
 }
 

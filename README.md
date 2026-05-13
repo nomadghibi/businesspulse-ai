@@ -40,8 +40,9 @@ Default local demo login:
 ## First Live Integration
 
 - Endpoint: `POST /api/integrations/stripe/sync`
-- Inputs: optional `secretKey`, optional `limit`
+- Inputs: optional `limit`
 - Behavior: fetches charges from Stripe and ingests them as revenue transactions
+- Credential source: `STRIPE_SECRET_KEY` from server environment only
 - Webhook endpoint: `POST /api/integrations/stripe/webhook`
 - Webhook events handled: `payment_intent.succeeded`, `charge.succeeded`, `charge.refunded`
 

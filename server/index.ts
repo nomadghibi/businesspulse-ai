@@ -25,7 +25,10 @@ app.post("/api/integrations/stripe/webhook", express.raw({ type: "application/js
     const raw = Buffer.isBuffer(req.body) ? req.body : Buffer.from("");
     const expected = crypto.createHmac("sha256", secret).update(raw).digest("hex");
     const provided = signature.split(",").find((part) => part.startsWith("v1="))?.slice(3) ?? "";
-    if (!provided || !crypto.timingSafeEqual(Buffer.from(expected), Buffer.from(provided))) {
+    if (!provided) return res.status(400).json({ error: "Invalid webhook signature" });
+    const expectedBuffer = Buffer.from(expected);
+    const providedBuffer = Buffer.from(provided);
+    if (expectedBuffer.length !== providedBuffer.length || !crypto.timingSafeEqual(expectedBuffer, providedBuffer)) {
       return res.status(400).json({ error: "Invalid webhook signature" });
     }
     const event = JSON.parse(raw.toString("utf8")) as { type: string; data?: { object?: any } };
@@ -297,9 +300,9 @@ app.get("/api/agent-runs", async (req, res, next) => {
 app.post("/api/integrations/stripe/sync", async (req, res, next) => {
   try {
     requireRole(req, res, ["owner", "admin"]);
-    const body = z.object({ secretKey: z.string().optional(), limit: z.number().int().min(1).max(100).default(25) }).parse(req.body ?? {});
+    const body = z.object({ limit: z.number().int().min(1).max(100).default(25) }).parse(req.body ?? {});
     const organizationId = org(req);
-    const secretKey = body.secretKey || process.env.STRIPE_SECRET_KEY;
+    const secretKey = process.env.STRIPE_SECRET_KEY;
     if (!secretKey) throw Object.assign(new Error("Missing Stripe secret key"), { status: 400 });
 
     const response = await fetch(`https://api.stripe.com/v1/charges?limit=${body.limit}`, {
