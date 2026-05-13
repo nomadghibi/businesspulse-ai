@@ -33,7 +33,14 @@ export interface Storage {
   createDemoRequest(input: { name: string; email: string; company?: string; message?: string }): Promise<void>;
   trackEvent(input: { organizationId?: string; eventName: string; payload: Record<string, unknown> }): Promise<void>;
   getOrganizationPlan(organizationId: string): Promise<{ plan: string; status: string }>;
-  upsertOrganizationPlan(organizationId: string, plan: string, status: string): Promise<void>;
+  upsertOrganizationPlan(
+    organizationId: string,
+    plan: string,
+    status: string,
+    refs?: { stripeCustomerId?: string; stripeSubscriptionId?: string; stripeCheckoutSessionId?: string }
+  ): Promise<void>;
+  findOrganizationIdByStripeRefs(refs: { stripeCustomerId?: string; stripeSubscriptionId?: string; stripeCheckoutSessionId?: string }): Promise<string | null>;
+  hasWebhookEventProcessed(eventId: string, provider: string): Promise<boolean>;
   markWebhookEventProcessed(input: { eventId: string; provider: string; organizationId?: string; eventType: string }): Promise<boolean>;
 }
 
@@ -127,6 +134,12 @@ class MemoryStorage implements Storage {
   async upsertOrganizationPlan(organizationId: string, plan: string, status: string) {
     this.plans.set(organizationId, { plan, status });
   }
+  async findOrganizationIdByStripeRefs() {
+    return null;
+  }
+  async hasWebhookEventProcessed(eventId: string, provider: string) {
+    return this.processedWebhookEvents.has(`${provider}:${eventId}`);
+  }
   async markWebhookEventProcessed(input: { eventId: string; provider: string; organizationId?: string; eventType: string }) {
     const key = `${input.provider}:${input.eventId}`;
     if (this.processedWebhookEvents.has(key)) return false;
@@ -158,17 +171,22 @@ class PostgresStorage implements Storage {
       );
       await this.saveOrgData(org.id, data);
     }
-    await this.pool.query(
-      `insert into users (id, email, password_hash, disabled) values ($1, $2, $3, false)
-       on conflict (id) do update set email = excluded.email, password_hash = excluded.password_hash`,
-      ["user_demo_owner", "owner@businesspulse.local", hashPassword("demo1234")]
-    );
-    await this.pool.query(
-      `insert into organization_members (id, organization_id, user_id, role)
-       values ($1, $2, $3, 'owner')
-       on conflict (id) do update set role = excluded.role`,
-      ["member_demo_owner", org.id, "user_demo_owner"]
-    );
+    const allowDemoCredentials =
+      process.env.ENABLE_DEMO_CREDENTIALS === "true" ||
+      (process.env.NODE_ENV !== "production" && process.env.ENABLE_DEMO_CREDENTIALS !== "false");
+    if (allowDemoCredentials) {
+      await this.pool.query(
+        `insert into users (id, email, password_hash, disabled) values ($1, $2, $3, false)
+         on conflict (id) do update set email = excluded.email, password_hash = excluded.password_hash`,
+        ["user_demo_owner", "owner@businesspulse.local", hashPassword("demo1234")]
+      );
+      await this.pool.query(
+        `insert into organization_members (id, organization_id, user_id, role)
+         values ($1, $2, $3, 'owner')
+         on conflict (id) do update set role = excluded.role`,
+        ["member_demo_owner", org.id, "user_demo_owner"]
+      );
+    }
   }
 
   async getOrganizations() {
@@ -206,9 +224,6 @@ class PostgresStorage implements Storage {
   async saveOrgData(organizationId: string, data: OrgData) {
     await this.pool.query("begin");
     try {
-      for (const table of ["customers", "leads", "jobs", "revenue_transactions", "marketing_spend", "data_sources", "file_uploads", "reports", "alerts", "recommendations", "agent_runs", "bp_customers", "bp_leads", "bp_jobs", "bp_revenue_transactions", "bp_marketing_spend"]) {
-        await this.pool.query(`delete from ${table} where organization_id = $1`, [organizationId]);
-      }
       await this.insertPayloads("customers", organizationId, data.customers);
       await this.insertPayloads("leads", organizationId, data.leads);
       await this.insertPayloads("jobs", organizationId, data.jobs);
@@ -353,17 +368,66 @@ class PostgresStorage implements Storage {
     if (!row) throw Object.assign(new Error("Organization not found"), { status: 404 });
     return { plan: row.subscription_plan, status: row.subscription_status };
   }
-  async upsertOrganizationPlan(organizationId: string, plan: string, status: string) {
+  async upsertOrganizationPlan(
+    organizationId: string,
+    plan: string,
+    status: string,
+    refs?: { stripeCustomerId?: string; stripeSubscriptionId?: string; stripeCheckoutSessionId?: string }
+  ) {
     await this.pool.query(
       "update organizations set subscription_plan = $2, subscription_status = $3, updated_at = now() where id = $1",
       [organizationId, plan, status]
     );
     await this.pool.query(
-      `insert into billing_subscriptions (id, organization_id, plan, status, updated_at)
-       values ($1,$2,$3,$4,now())
-       on conflict (id) do update set plan = excluded.plan, status = excluded.status, updated_at = now()`,
-      [`sub_${organizationId}`, organizationId, plan, status]
+      `insert into billing_subscriptions (id, organization_id, stripe_customer_id, stripe_subscription_id, stripe_checkout_session_id, plan, status, updated_at)
+       values ($1,$2,$3,$4,$5,$6,$7,now())
+       on conflict (id) do update set
+         stripe_customer_id = coalesce(excluded.stripe_customer_id, billing_subscriptions.stripe_customer_id),
+         stripe_subscription_id = coalesce(excluded.stripe_subscription_id, billing_subscriptions.stripe_subscription_id),
+         stripe_checkout_session_id = coalesce(excluded.stripe_checkout_session_id, billing_subscriptions.stripe_checkout_session_id),
+         plan = excluded.plan,
+         status = excluded.status,
+         updated_at = now()`,
+      [
+        `sub_${organizationId}`,
+        organizationId,
+        refs?.stripeCustomerId ?? null,
+        refs?.stripeSubscriptionId ?? null,
+        refs?.stripeCheckoutSessionId ?? null,
+        plan,
+        status
+      ]
     );
+  }
+  async findOrganizationIdByStripeRefs(refs: { stripeCustomerId?: string; stripeSubscriptionId?: string; stripeCheckoutSessionId?: string }) {
+    const where: string[] = [];
+    const values: string[] = [];
+    if (refs.stripeSubscriptionId) {
+      values.push(refs.stripeSubscriptionId);
+      where.push(`stripe_subscription_id = $${values.length}`);
+    }
+    if (refs.stripeCustomerId) {
+      values.push(refs.stripeCustomerId);
+      where.push(`stripe_customer_id = $${values.length}`);
+    }
+    if (refs.stripeCheckoutSessionId) {
+      values.push(refs.stripeCheckoutSessionId);
+      where.push(`stripe_checkout_session_id = $${values.length}`);
+    }
+    if (!where.length) return null;
+    const result = await this.pool.query<{ organization_id: string }>(
+      `select organization_id
+       from billing_subscriptions
+       where ${where.join(" or ")}
+       order by updated_at desc
+       limit 1`,
+      values
+    );
+    return result.rows[0]?.organization_id ?? null;
+  }
+  async hasWebhookEventProcessed(eventId: string, _provider: string) {
+    const result = await this.pool.query("select 1 from processed_webhook_events where id = $1 limit 1", [eventId]);
+    return (result.rowCount ?? 0) > 0;
   }
   async markWebhookEventProcessed(input: { eventId: string; provider: string; organizationId?: string; eventType: string }) {
     const result = await this.pool.query(
@@ -384,7 +448,8 @@ class PostgresStorage implements Storage {
   }
   private async insertPayloads(table: string, organizationId: string, rows: Array<{ id: string }>) {
     for (const row of rows) {
-      await this.pool.query(`insert into ${table} (id, organization_id, payload) values ($1, $2, $3::jsonb)`, [
+      await this.pool.query(`insert into ${table} (id, organization_id, payload) values ($1, $2, $3::jsonb)
+                             on conflict (id) do update set organization_id = excluded.organization_id, payload = excluded.payload`, [
         row.id,
         organizationId,
         JSON.stringify(row)
@@ -440,7 +505,20 @@ class PostgresStorage implements Storage {
     for (const row of rows) {
       await this.pool.query(
         `insert into bp_customers (id, organization_id, external_id, name, email, phone, city, state, zip, lead_source, first_seen_at, created_at, updated_at)
-         values ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13)`,
+         values ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13)
+         on conflict (id) do update set
+           organization_id = excluded.organization_id,
+           external_id = excluded.external_id,
+           name = excluded.name,
+           email = excluded.email,
+           phone = excluded.phone,
+           city = excluded.city,
+           state = excluded.state,
+           zip = excluded.zip,
+           lead_source = excluded.lead_source,
+           first_seen_at = excluded.first_seen_at,
+           created_at = excluded.created_at,
+           updated_at = excluded.updated_at`,
         [row.id, organizationId, row.externalId ?? null, row.name ?? null, row.email ?? null, row.phone ?? null, row.city ?? null, row.state ?? null, row.zip ?? null, row.leadSource ?? null, row.firstSeenAt ?? null, row.createdAt, row.updatedAt]
       );
     }
@@ -449,7 +527,19 @@ class PostgresStorage implements Storage {
     for (const row of rows) {
       await this.pool.query(
         `insert into bp_leads (id, organization_id, external_id, customer_external_id, source, campaign, status, estimated_value, created_at_source, booked_at, created_at, updated_at)
-         values ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12)`,
+         values ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12)
+         on conflict (id) do update set
+           organization_id = excluded.organization_id,
+           external_id = excluded.external_id,
+           customer_external_id = excluded.customer_external_id,
+           source = excluded.source,
+           campaign = excluded.campaign,
+           status = excluded.status,
+           estimated_value = excluded.estimated_value,
+           created_at_source = excluded.created_at_source,
+           booked_at = excluded.booked_at,
+           created_at = excluded.created_at,
+           updated_at = excluded.updated_at`,
         [row.id, organizationId, row.externalId ?? null, row.customerExternalId ?? null, row.source ?? null, row.campaign ?? null, row.status ?? null, row.estimatedValue ?? null, row.createdAtSource ?? null, row.bookedAt ?? null, row.createdAt, row.updatedAt]
       );
     }
@@ -458,7 +548,22 @@ class PostgresStorage implements Storage {
     for (const row of rows) {
       await this.pool.query(
         `insert into bp_jobs (id, organization_id, external_id, customer_external_id, lead_external_id, job_type, technician, status, scheduled_at, completed_at, revenue, cost, lead_source, created_at, updated_at)
-         values ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15)`,
+         values ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15)
+         on conflict (id) do update set
+           organization_id = excluded.organization_id,
+           external_id = excluded.external_id,
+           customer_external_id = excluded.customer_external_id,
+           lead_external_id = excluded.lead_external_id,
+           job_type = excluded.job_type,
+           technician = excluded.technician,
+           status = excluded.status,
+           scheduled_at = excluded.scheduled_at,
+           completed_at = excluded.completed_at,
+           revenue = excluded.revenue,
+           cost = excluded.cost,
+           lead_source = excluded.lead_source,
+           created_at = excluded.created_at,
+           updated_at = excluded.updated_at`,
         [row.id, organizationId, row.externalId ?? null, row.customerExternalId ?? null, row.leadExternalId ?? null, row.jobType ?? null, row.technician ?? null, row.status ?? null, row.scheduledAt ?? null, row.completedAt ?? null, row.revenue ?? null, row.cost ?? null, row.leadSource ?? null, row.createdAt, row.updatedAt]
       );
     }
@@ -467,7 +572,17 @@ class PostgresStorage implements Storage {
     for (const row of rows) {
       await this.pool.query(
         `insert into bp_revenue_transactions (id, organization_id, external_id, customer_external_id, job_external_id, amount, payment_method, paid_at, created_at, updated_at)
-         values ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10)`,
+         values ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10)
+         on conflict (id) do update set
+           organization_id = excluded.organization_id,
+           external_id = excluded.external_id,
+           customer_external_id = excluded.customer_external_id,
+           job_external_id = excluded.job_external_id,
+           amount = excluded.amount,
+           payment_method = excluded.payment_method,
+           paid_at = excluded.paid_at,
+           created_at = excluded.created_at,
+           updated_at = excluded.updated_at`,
         [row.id, organizationId, row.externalId ?? null, row.customerExternalId ?? null, row.jobExternalId ?? null, row.amount, row.paymentMethod ?? null, row.paidAt ?? null, row.createdAt, row.updatedAt]
       );
     }
@@ -476,7 +591,19 @@ class PostgresStorage implements Storage {
     for (const row of rows) {
       await this.pool.query(
         `insert into bp_marketing_spend (id, organization_id, spend_date, platform, campaign, impressions, clicks, spend, leads, conversions, created_at, updated_at)
-         values ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12)`,
+         values ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12)
+         on conflict (id) do update set
+           organization_id = excluded.organization_id,
+           spend_date = excluded.spend_date,
+           platform = excluded.platform,
+           campaign = excluded.campaign,
+           impressions = excluded.impressions,
+           clicks = excluded.clicks,
+           spend = excluded.spend,
+           leads = excluded.leads,
+           conversions = excluded.conversions,
+           created_at = excluded.created_at,
+           updated_at = excluded.updated_at`,
         [row.id, organizationId, row.date, row.platform ?? null, row.campaign ?? null, row.impressions ?? null, row.clicks ?? null, row.spend, row.leads ?? null, row.conversions ?? null, row.createdAt, row.updatedAt]
       );
     }

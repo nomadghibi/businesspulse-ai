@@ -5,9 +5,10 @@ import express from "express";
 import multer from "multer";
 import { z } from "zod";
 import { answerQuestion } from "./ai";
-import { ingestCsv } from "./csv";
+import { ingestCsv, previewCsv } from "./csv";
 import { validateRuntimeEnv } from "./env";
 import { calculateMetrics, generateAlerts, generateRecommendations, generateReport } from "./metrics";
+import { verifyStripeWebhookSignature } from "./stripeWebhook";
 import { type AuthRole, getStorage } from "./storage";
 import { defaultPeriod } from "./utils";
 
@@ -16,96 +17,105 @@ const upload = multer({ storage: multer.memoryStorage(), limits: { fileSize: 5 *
 const port = Number(process.env.PORT ?? 5055);
 const storage = getStorage();
 const loginAttempts = new Map<string, { count: number; blockedUntil: number }>();
+const processingWebhookEvents = new Set<string>();
 const billableWriteEndpoints = new Set(["/upload", "/reports", "/integrations/stripe/sync"]);
 
 validateRuntimeEnv();
 
-app.use(cors());
+app.use(cors(buildCorsOptions()));
 app.post("/api/integrations/stripe/webhook", express.raw({ type: "application/json" }), async (req, res, next) => {
   try {
     const signature = String(req.header("stripe-signature") ?? "");
     const secret = process.env.STRIPE_WEBHOOK_SECRET;
     if (!secret) return res.status(400).json({ error: "Missing STRIPE_WEBHOOK_SECRET" });
     const raw = Buffer.isBuffer(req.body) ? req.body : Buffer.from("");
-    const expected = crypto.createHmac("sha256", secret).update(raw).digest("hex");
-    const provided = signature.split(",").find((part) => part.startsWith("v1="))?.slice(3) ?? "";
-    if (!provided) return res.status(400).json({ error: "Invalid webhook signature" });
-    const expectedBuffer = Buffer.from(expected);
-    const providedBuffer = Buffer.from(provided);
-    if (expectedBuffer.length !== providedBuffer.length || !crypto.timingSafeEqual(expectedBuffer, providedBuffer)) {
+    if (!verifyStripeWebhookSignature({ rawBody: raw, signatureHeader: signature, secret })) {
       return res.status(400).json({ error: "Invalid webhook signature" });
     }
     const event = JSON.parse(raw.toString("utf8")) as { id?: string; type: string; data?: { object?: any } };
     if (!event.id) return res.status(400).json({ error: "Missing webhook event id" });
+    if (processingWebhookEvents.has(event.id)) return res.status(200).json({ received: true, duplicate: true });
+    if (await storage.hasWebhookEventProcessed(event.id, "stripe")) return res.status(200).json({ received: true, duplicate: true });
+    processingWebhookEvents.add(event.id);
     const object = event.data?.object;
-    if (!object?.metadata?.organization_id) return res.status(200).json({ received: true, ignored: "missing organization_id metadata" });
-    const organizationId = String(object.metadata.organization_id);
-    const shouldProcess = await storage.markWebhookEventProcessed({
-      eventId: event.id,
-      provider: "stripe",
-      organizationId,
-      eventType: event.type
-    });
-    if (!shouldProcess) return res.status(200).json({ received: true, duplicate: true });
-    const data = await storage.getOrgData(organizationId);
-    const createdAt = new Date().toISOString();
-    if (event.type === "payment_intent.succeeded" || event.type === "charge.succeeded") {
-      const externalId = object.latest_charge || object.id;
-      if (!data.revenue.some((row) => row.externalId === externalId)) {
-        data.revenue.push({
-          id: `rev_${crypto.randomUUID()}`,
+    try {
+      const organizationId = await resolveOrganizationIdFromStripeEvent(object);
+      if (!organizationId) return res.status(200).json({ received: true, ignored: "organization could not be resolved" });
+      const data = await storage.getOrgData(organizationId);
+      const createdAt = new Date().toISOString();
+      if (event.type === "payment_intent.succeeded" || event.type === "charge.succeeded") {
+        const externalId = object.latest_charge || object.id;
+        if (!data.revenue.some((row) => row.externalId === externalId)) {
+          data.revenue.push({
+            id: `rev_${crypto.randomUUID()}`,
+            organizationId,
+            externalId,
+            amount: Number(object.amount_received ?? object.amount ?? 0) / 100,
+            paymentMethod: object.payment_method_types?.[0] ?? "stripe",
+            paidAt: new Date((object.created ?? Date.now() / 1000) * 1000).toISOString(),
+            createdAt,
+            updatedAt: createdAt
+          });
+        }
+      }
+      if (event.type === "charge.refunded") {
+        const refundExternalId = `refund_${object.id}`;
+        if (!data.revenue.some((row) => row.externalId === refundExternalId)) {
+          data.revenue.push({
+            id: `rev_${crypto.randomUUID()}`,
+            organizationId,
+            externalId: refundExternalId,
+            amount: -Math.abs(Number(object.amount_refunded ?? object.amount ?? 0) / 100),
+            paymentMethod: "stripe_refund",
+            paidAt: new Date((object.created ?? Date.now() / 1000) * 1000).toISOString(),
+            createdAt,
+            updatedAt: createdAt
+          });
+        }
+      }
+      if (event.type === "checkout.session.completed") {
+        const plan = String(object.metadata?.plan ?? "starter");
+        const status = String(object.payment_status === "paid" ? "active" : "trialing");
+        await storage.upsertOrganizationPlan(organizationId, plan, status, {
+          stripeCustomerId: object.customer ? String(object.customer) : undefined,
+          stripeSubscriptionId: object.subscription ? String(object.subscription) : undefined,
+          stripeCheckoutSessionId: object.id ? String(object.id) : undefined
+        });
+        await storage.trackEvent({
           organizationId,
-          externalId,
-          amount: Number(object.amount_received ?? object.amount ?? 0) / 100,
-          paymentMethod: object.payment_method_types?.[0] ?? "stripe",
-          paidAt: new Date((object.created ?? Date.now() / 1000) * 1000).toISOString(),
-          createdAt,
-          updatedAt: createdAt
+          eventName: "billing_checkout_completed",
+          payload: { sessionId: object.id, plan, status }
         });
       }
-    }
-    if (event.type === "charge.refunded") {
-      const refundExternalId = `refund_${object.id}`;
-      if (!data.revenue.some((row) => row.externalId === refundExternalId)) {
-        data.revenue.push({
-          id: `rev_${crypto.randomUUID()}`,
+      if (event.type === "customer.subscription.updated" || event.type === "customer.subscription.created") {
+        const plan = String(object.metadata?.plan ?? "starter");
+        const stripeStatus = String(object.status ?? "");
+        const normalizedStatus =
+          stripeStatus === "active" ? "active" :
+          stripeStatus === "trialing" ? "trialing" :
+          stripeStatus === "past_due" ? "past_due" :
+          stripeStatus === "canceled" || stripeStatus === "unpaid" ? "canceled" : "trialing";
+        await storage.upsertOrganizationPlan(organizationId, plan, normalizedStatus, {
+          stripeCustomerId: object.customer ? String(object.customer) : undefined,
+          stripeSubscriptionId: object.id ? String(object.id) : undefined
+        });
+        await storage.trackEvent({
           organizationId,
-          externalId: refundExternalId,
-          amount: -Math.abs(Number(object.amount_refunded ?? object.amount ?? 0) / 100),
-          paymentMethod: "stripe_refund",
-          paidAt: new Date((object.created ?? Date.now() / 1000) * 1000).toISOString(),
-          createdAt,
-          updatedAt: createdAt
+          eventName: "billing_subscription_updated",
+          payload: { subscriptionId: object.id, plan, status: normalizedStatus }
         });
       }
-    }
-    if (event.type === "checkout.session.completed") {
-      const plan = String(object.metadata?.plan ?? "starter");
-      const status = String(object.payment_status === "paid" ? "active" : "trialing");
-      await storage.upsertOrganizationPlan(organizationId, plan, status);
-      await storage.trackEvent({
+      await storage.saveOrgData(organizationId, data);
+      await storage.markWebhookEventProcessed({
+        eventId: event.id,
+        provider: "stripe",
         organizationId,
-        eventName: "billing_checkout_completed",
-        payload: { sessionId: object.id, plan, status }
+        eventType: event.type
       });
+      res.json({ received: true });
+    } finally {
+      processingWebhookEvents.delete(event.id);
     }
-    if (event.type === "customer.subscription.updated" || event.type === "customer.subscription.created") {
-      const plan = String(object.metadata?.plan ?? "starter");
-      const stripeStatus = String(object.status ?? "");
-      const normalizedStatus =
-        stripeStatus === "active" ? "active" :
-        stripeStatus === "trialing" ? "trialing" :
-        stripeStatus === "past_due" ? "past_due" :
-        stripeStatus === "canceled" || stripeStatus === "unpaid" ? "canceled" : "trialing";
-      await storage.upsertOrganizationPlan(organizationId, plan, normalizedStatus);
-      await storage.trackEvent({
-        organizationId,
-        eventName: "billing_subscription_updated",
-        payload: { subscriptionId: object.id, plan, status: normalizedStatus }
-      });
-    }
-    await storage.saveOrgData(organizationId, data);
-    res.json({ received: true });
   } catch (error) {
     next(error);
   }
@@ -119,6 +129,13 @@ app.get("/api/health", (_req, res) => {
 app.post("/api/auth/login", async (req, res, next) => {
   try {
     const body = z.object({ email: z.string().email(), password: z.string().min(6) }).parse(req.body);
+    const isDemoLogin = body.email.toLowerCase() === "owner@businesspulse.local";
+    const demoEnabled =
+      process.env.ENABLE_DEMO_CREDENTIALS === "true" ||
+      (process.env.NODE_ENV !== "production" && process.env.ENABLE_DEMO_CREDENTIALS !== "false");
+    if (isDemoLogin && !demoEnabled) {
+      return res.status(403).json({ error: "Demo login is disabled." });
+    }
     const key = `${req.ip}:${body.email.toLowerCase()}`;
     const nowTs = Date.now();
     const state = loginAttempts.get(key);
@@ -236,12 +253,14 @@ app.post("/api/analytics/track", async (req, res, next) => {
   }
 });
 
-app.get("/api/organization", async (_req, res, next) => {
+app.get("/api/organization", async (req, res, next) => {
   try {
     const organizations = await storage.getOrganizations();
-    const organizationId = organizations[0].id;
+    const organizationId = org(req);
+    const organization = organizations.find((item) => item.id === organizationId);
+    if (!organization) return res.status(404).json({ error: "Organization not found" });
     const plan = await storage.getOrganizationPlan(organizationId);
-    res.json({ ...organizations[0], subscriptionPlan: plan.plan, subscriptionStatus: plan.status });
+    res.json({ ...organization, subscriptionPlan: plan.plan, subscriptionStatus: plan.status });
   } catch (error) {
     next(error);
   }
@@ -295,6 +314,10 @@ app.post("/api/billing/checkout", async (req, res, next) => {
 app.post("/api/billing/activate", async (req, res, next) => {
   try {
     requireRole(req, res, ["owner", "admin"]);
+    const manualActivationEnabled = process.env.ENABLE_MANUAL_BILLING_ACTIVATION === "true";
+    if (!manualActivationEnabled) {
+      return res.status(403).json({ error: "Manual billing activation is disabled. Use Stripe checkout/webhooks." });
+    }
     const body = z.object({ plan: z.enum(["starter", "growth", "pro"]), status: z.enum(["active", "trialing", "past_due", "canceled"]) }).parse(req.body ?? {});
     await storage.upsertOrganizationPlan(org(req), body.plan, body.status);
     res.json({ ok: true });
@@ -362,15 +385,36 @@ app.get("/api/uploads", async (req, res, next) => {
 app.post("/api/upload", upload.single("file"), async (req, res, next) => {
   try {
     requireRole(req, res, ["owner", "admin"]);
-    const body = z.object({ datasetType: z.enum(["customers", "leads", "jobs", "revenue", "marketing_spend"]) }).parse(req.body);
+    const body = z.object({
+      datasetType: z.enum(["customers", "leads", "jobs", "revenue", "marketing_spend"]),
+      mode: z.enum(["preview", "commit"]).default("commit"),
+      mappings: z.string().optional()
+    }).parse(req.body);
     if (!req.file) throw Object.assign(new Error("CSV file is required"), { status: 400 });
+    if (body.mode === "preview") {
+      const preview = previewCsv({
+        organizationId: org(req),
+        datasetType: body.datasetType,
+        filename: req.file.originalname,
+        buffer: req.file.buffer
+      });
+      return res.json(preview);
+    }
     const organizationId = org(req);
     const data = await storage.getOrgData(organizationId);
+    const mappings = body.mappings
+      ? z.array(z.object({
+          sourceColumn: z.string().min(1),
+          targetField: z.string().min(1),
+          confidence: z.number().min(0).max(1).optional().default(1)
+        })).parse(JSON.parse(body.mappings))
+      : undefined;
     const result = ingestCsv({
       organizationId,
       datasetType: body.datasetType,
       filename: req.file.originalname,
       buffer: req.file.buffer,
+      mappings,
       data
     });
     await storage.saveOrgData(organizationId, data);
@@ -527,4 +571,31 @@ function requireRole(req: express.Request, res: express.Response, allowed: AuthR
 function periodFromQuery(req: express.Request) {
   const parsed = z.object({ start: z.string().optional(), end: z.string().optional() }).parse(req.query);
   return parsed.start && parsed.end ? { start: parsed.start, end: parsed.end } : defaultPeriod();
+}
+
+function buildCorsOptions(): cors.CorsOptions {
+  const isProd = process.env.NODE_ENV === "production";
+  if (!isProd) return {};
+  const configured = (process.env.APP_CORS_ORIGINS ?? process.env.APP_BASE_URL ?? "")
+    .split(",")
+    .map((value) => value.trim())
+    .filter(Boolean);
+  const allowedOrigins = new Set(configured);
+  return {
+    origin(origin, callback) {
+      if (!origin) return callback(null, true);
+      if (allowedOrigins.has(origin)) return callback(null, true);
+      callback(new Error("CORS origin not allowed"));
+    }
+  };
+}
+
+async function resolveOrganizationIdFromStripeEvent(object: any): Promise<string | null> {
+  const metadataOrgId = object?.metadata?.organization_id;
+  if (metadataOrgId) return String(metadataOrgId);
+  return storage.findOrganizationIdByStripeRefs({
+    stripeSubscriptionId: object?.subscription ? String(object.subscription) : object?.id ? String(object.id) : undefined,
+    stripeCustomerId: object?.customer ? String(object.customer) : undefined,
+    stripeCheckoutSessionId: object?.object === "checkout.session" && object?.id ? String(object.id) : undefined
+  });
 }

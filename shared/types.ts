@@ -43,6 +43,17 @@ export interface ColumnMapping {
   confidence: number;
 }
 
+export interface CsvPreview {
+  datasetType: DatasetType;
+  filename: string;
+  rowCount: number;
+  columns: string[];
+  sampleRows: Record<string, string>[];
+  suggestedMappings: ColumnMapping[];
+  requiredFields: string[];
+  qualityIssues: string[];
+}
+
 export interface Customer extends TenantRecord {
   externalId?: string;
   name?: string;
@@ -183,6 +194,7 @@ export interface AgentRun extends TenantRecord {
 export interface AiAnswer {
   directAnswer: string;
   supportingMetrics: Array<{ label: string; value: string }>;
+  supportingEvidence: Array<{ id: string; source: DatasetType; summary: string; value?: string }>;
   dateRange: Period;
   dataSourcesUsed: DatasetType[];
   assumptions: string[];

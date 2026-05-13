@@ -1,8 +1,8 @@
 import { AlertTriangle, ArrowRight, BarChart3, Bot, CheckCircle2, Database, FileText, Lightbulb, Loader2, Upload } from "lucide-react";
 import { useEffect, useMemo, useState } from "react";
 import { Area, AreaChart, Bar, BarChart, CartesianGrid, ResponsiveContainer, Tooltip, XAxis, YAxis } from "recharts";
-import type { AiAnswer, DatasetType, FileUpload, MetricsResponse, Organization, Recommendation, Report } from "../shared/types";
-import { askAi, clearToken, createCheckout, type AppUser, generateReport, getAlerts, getMetrics, getOrganization, getRecommendations, getReports, getUploads, getUsers, inviteUser, login, logout, requestDemo, setToken, startTrial, syncStripe, trackEvent, trackPublicEvent, updateUserRole, updateUserStatus, uploadCsv } from "./api";
+import type { AiAnswer, ColumnMapping, CsvPreview, DatasetType, FileUpload, MetricsResponse, Organization, Recommendation, Report } from "../shared/types";
+import { askAi, clearToken, commitUploadCsv, createCheckout, type AppUser, generateReport, getAlerts, getMetrics, getOrganization, getRecommendations, getReports, getUploads, getUsers, inviteUser, login, logout, previewUploadCsv, requestDemo, setToken, startTrial, syncStripe, trackEvent, trackPublicEvent, updateUserRole, updateUserStatus } from "./api";
 
 const datasetTypes: Array<{ value: DatasetType; label: string }> = [
   { value: "customers", label: "Customers" },
@@ -11,6 +11,14 @@ const datasetTypes: Array<{ value: DatasetType; label: string }> = [
   { value: "revenue", label: "Revenue" },
   { value: "marketing_spend", label: "Marketing Spend" }
 ];
+
+const datasetTargetFields: Record<DatasetType, string[]> = {
+  customers: ["customer_id", "name", "email", "phone", "city", "state", "zip", "lead_source", "created_at"],
+  leads: ["lead_id", "customer_id", "source", "status", "created_at", "booked_at", "estimated_value", "campaign"],
+  jobs: ["job_id", "customer_id", "lead_id", "job_type", "technician", "status", "scheduled_at", "completed_at", "revenue", "cost", "lead_source"],
+  revenue: ["transaction_id", "customer_id", "job_id", "amount", "payment_method", "paid_at"],
+  marketing_spend: ["date", "platform", "campaign", "impressions", "clicks", "spend", "leads", "conversions"]
+};
 
 function dateDaysAgo(days: number) {
   const date = new Date();
@@ -414,6 +422,17 @@ function AskAI({ start, end }: { start: string; end: string }) {
               <li>Sources used: {answer.dataSourcesUsed.join(", ")}</li>
               <li>Recommended next action: {answer.recommendedNextAction}</li>
             </ul>
+            {answer.supportingEvidence.length ? (
+              <div className="table">
+                <div className="table-head"><span>Evidence</span><span>Value</span></div>
+                {answer.supportingEvidence.map((item) => (
+                  <div className="table-row" key={item.id}>
+                    <span>{item.id} - {item.summary}</span>
+                    <span>{item.value ?? "-"}</span>
+                  </div>
+                ))}
+              </div>
+            ) : null}
           </Panel>
         </section>
       ) : null}
@@ -424,12 +443,47 @@ function AskAI({ start, end }: { start: string; end: string }) {
 function DataSources({ uploads, refresh }: { uploads: FileUpload[]; refresh: () => Promise<void> }) {
   const [datasetType, setDatasetType] = useState<DatasetType>("jobs");
   const [busy, setBusy] = useState(false);
+  const [pendingFile, setPendingFile] = useState<File | null>(null);
+  const [preview, setPreview] = useState<CsvPreview | null>(null);
+  const [mappingDraft, setMappingDraft] = useState<Record<string, string>>({});
+  const [message, setMessage] = useState("");
 
   async function onFile(file: File | null) {
     if (!file) return;
     setBusy(true);
+    setMessage("");
     try {
-      await uploadCsv(datasetType, file);
+      const nextPreview = await previewUploadCsv(datasetType, file);
+      setPendingFile(file);
+      setPreview(nextPreview);
+      const defaults: Record<string, string> = {};
+      for (const field of datasetTargetFields[datasetType]) {
+        defaults[field] = nextPreview.suggestedMappings.find((mapping) => mapping.targetField === field)?.sourceColumn ?? "";
+      }
+      setMappingDraft(defaults);
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  async function commitUpload() {
+    if (!pendingFile || !preview) return;
+    const mappings: ColumnMapping[] = Object.entries(mappingDraft)
+      .filter(([, sourceColumn]) => sourceColumn)
+      .map(([targetField, sourceColumn]) => ({ targetField, sourceColumn, confidence: 1 }));
+    const missing = preview.requiredFields.filter((field) => !mappingDraft[field]);
+    if (missing.length) {
+      setMessage(`Required mappings missing: ${missing.join(", ")}`);
+      return;
+    }
+    setBusy(true);
+    setMessage("");
+    try {
+      await commitUploadCsv(datasetType, pendingFile, mappings);
+      setPendingFile(null);
+      setPreview(null);
+      setMappingDraft({});
+      setMessage("Upload processed successfully.");
       await refresh();
     } finally {
       setBusy(false);
@@ -445,10 +499,34 @@ function DataSources({ uploads, refresh }: { uploads: FileUpload[]; refresh: () 
           </select>
           <label className="file-input">
             <Upload size={18} />
-            {busy ? "Processing..." : "Choose CSV"}
+            {busy ? "Processing..." : "Choose CSV For Preview"}
             <input type="file" accept=".csv,text/csv" onChange={(event) => void onFile(event.target.files?.[0] ?? null)} />
           </label>
         </div>
+        {message ? <div className="notice">{message}</div> : null}
+        {preview ? (
+          <div className="stack">
+            <div className="table">
+              <div className="table-head"><span>Field</span><span>Column Mapping</span></div>
+              {datasetTargetFields[datasetType].map((field) => (
+                <div className="table-row" key={field}>
+                  <span>{field}{preview.requiredFields.includes(field) ? " *" : ""}</span>
+                  <select
+                    value={mappingDraft[field] ?? ""}
+                    onChange={(event) => setMappingDraft((prev) => ({ ...prev, [field]: event.target.value }))}
+                  >
+                    <option value="">Unmapped</option>
+                    {preview.columns.map((column) => <option key={`${field}:${column}`} value={column}>{column}</option>)}
+                  </select>
+                </div>
+              ))}
+            </div>
+            {preview.qualityIssues.length ? <div className="notice">{preview.qualityIssues.join(" | ")}</div> : null}
+            <button className="primary align-start" disabled={busy} onClick={commitUpload}>
+              {busy ? "Committing..." : "Commit Import"}
+            </button>
+          </div>
+        ) : null}
       </Panel>
       <Panel title="Upload History">
         <div className="table">

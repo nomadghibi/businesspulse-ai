@@ -1,4 +1,4 @@
-import type { AiAnswer, Alert, DatasetType, FileUpload, MetricsResponse, Organization, Recommendation, Report } from "../shared/types";
+import type { AiAnswer, Alert, ColumnMapping, CsvPreview, DatasetType, FileUpload, MetricsResponse, Organization, Recommendation, Report } from "../shared/types";
 
 const TOKEN_KEY = "bp_token";
 
@@ -51,6 +51,24 @@ export function getMetrics(start: string, end: string) {
 export function uploadCsv(datasetType: DatasetType, file: File) {
   const form = new FormData();
   form.append("datasetType", datasetType);
+  form.append("mode", "commit");
+  form.append("file", file);
+  return request<FileUpload>("/upload", { method: "POST", body: form });
+}
+
+export function previewUploadCsv(datasetType: DatasetType, file: File) {
+  const form = new FormData();
+  form.append("datasetType", datasetType);
+  form.append("mode", "preview");
+  form.append("file", file);
+  return request<CsvPreview>("/upload", { method: "POST", body: form });
+}
+
+export function commitUploadCsv(datasetType: DatasetType, file: File, mappings: ColumnMapping[]) {
+  const form = new FormData();
+  form.append("datasetType", datasetType);
+  form.append("mode", "commit");
+  form.append("mappings", JSON.stringify(mappings));
   form.append("file", file);
   return request<FileUpload>("/upload", { method: "POST", body: form });
 }

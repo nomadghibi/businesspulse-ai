@@ -1,7 +1,7 @@
 import type { AiAnswer, DatasetType, MetricsResponse } from "../shared/types";
 import type { AgentRun } from "../shared/types";
 import type { OrgData } from "./store";
-import { formatCurrency, id, now } from "./utils";
+import { formatCurrency, id, inPeriod, now } from "./utils";
 
 export async function answerQuestion(params: {
   organizationId: string;
@@ -21,8 +21,9 @@ export async function answerQuestion(params: {
   };
   params.data.agentRuns.unshift(run);
   try {
-    const answer = await callModel(params.question, params.metrics);
-    const output = answer ?? groundedAnswer(params.question, params.metrics);
+    const evidence = buildEvidence(params.data, params.metrics);
+    const answer = await callModel(params.question, params.metrics, evidence);
+    const output = answer ?? groundedAnswer(params.question, params.metrics, evidence);
     run.output = output;
     run.status = "success";
     run.modelName = process.env.OPENAI_API_KEY ? process.env.OPENAI_MODEL || "openai-compatible" : "deterministic-fallback";
@@ -30,7 +31,7 @@ export async function answerQuestion(params: {
     run.updatedAt = now();
     return { ...output, agentRunId: run.id };
   } catch (error) {
-    const output = groundedAnswer(params.question, params.metrics);
+    const output = groundedAnswer(params.question, params.metrics, buildEvidence(params.data, params.metrics));
     run.output = output;
     run.status = "success";
     run.modelName = "deterministic-fallback-after-model-error";
@@ -41,7 +42,11 @@ export async function answerQuestion(params: {
   }
 }
 
-async function callModel(question: string, metrics: MetricsResponse): Promise<Omit<AiAnswer, "agentRunId"> | null> {
+async function callModel(
+  question: string,
+  metrics: MetricsResponse,
+  evidence: Array<{ id: string; source: DatasetType; summary: string; value?: string }>
+): Promise<Omit<AiAnswer, "agentRunId"> | null> {
   if (!process.env.OPENAI_API_KEY) return null;
   const baseUrl = process.env.OPENAI_BASE_URL || "https://api.openai.com/v1";
   const model = process.env.OPENAI_MODEL || "gpt-4.1-mini";
@@ -59,9 +64,9 @@ async function callModel(question: string, metrics: MetricsResponse): Promise<Om
         {
           role: "system",
           content:
-            "You are BusinessPulse AI. Answer only from supplied metrics. Return JSON with directAnswer, supportingMetrics, dateRange, dataSourcesUsed, assumptions, confidence, recommendedNextAction, reasoning."
+            "You are BusinessPulse AI. Answer only from supplied metrics and supportingEvidence. Cite evidence IDs inside reasoning lines. Return JSON with directAnswer, supportingMetrics, supportingEvidence, dateRange, dataSourcesUsed, assumptions, confidence, recommendedNextAction, reasoning."
         },
-        { role: "user", content: JSON.stringify({ question, metrics }) }
+        { role: "user", content: JSON.stringify({ question, metrics, supportingEvidence: evidence }) }
       ]
     })
   });
@@ -69,10 +74,18 @@ async function callModel(question: string, metrics: MetricsResponse): Promise<Om
   const json = (await response.json()) as { choices?: Array<{ message?: { content?: string } }> };
   const content = json.choices?.[0]?.message?.content;
   if (!content) return null;
-  return JSON.parse(content) as Omit<AiAnswer, "agentRunId">;
+  const parsed = JSON.parse(content) as Omit<AiAnswer, "agentRunId">;
+  if (!Array.isArray(parsed.supportingEvidence) || !parsed.supportingEvidence.length) {
+    parsed.supportingEvidence = evidence;
+  }
+  return parsed;
 }
 
-function groundedAnswer(question: string, metrics: MetricsResponse): Omit<AiAnswer, "agentRunId"> {
+function groundedAnswer(
+  question: string,
+  metrics: MetricsResponse,
+  evidence: Array<{ id: string; source: DatasetType; summary: string; value?: string }>
+): Omit<AiAnswer, "agentRunId"> {
   const revenue = metrics.cards.find((card) => card.name === "Total revenue");
   const leads = metrics.cards.find((card) => card.name === "Leads");
   const jobs = metrics.cards.find((card) => card.name === "Booked jobs");
@@ -101,6 +114,7 @@ function groundedAnswer(question: string, metrics: MetricsResponse): Omit<AiAnsw
       { label: "Marketing spend", value: `${spend?.formatted ?? "$0"}${formatDelta(spendDelta)}` },
       { label: "Top revenue source", value: topSource ? `${topSource.name} (${formatCurrency(topSource.value)})` : "Unknown" }
     ],
+    supportingEvidence: evidence,
     dateRange: metrics.period,
     dataSourcesUsed: [...sourceSet],
     assumptions: [
@@ -115,10 +129,58 @@ function groundedAnswer(question: string, metrics: MetricsResponse): Omit<AiAnsw
         : "Keep monitoring weekly source-level conversion and protect the channels producing booked revenue.",
     reasoning: [
       `The analysis compared ${metrics.period.start} to ${metrics.period.end} against ${metrics.comparisonPeriod.start} to ${metrics.comparisonPeriod.end}.`,
-      `The largest job-type revenue contributor was ${topJobType?.name ?? "not available"}.`,
-      `The largest lead-source revenue contributor was ${topSource?.name ?? "not available"}.`
+      `The largest job-type revenue contributor was ${topJobType?.name ?? "not available"} (evidence ${evidence[0]?.id ?? "none"}).`,
+      `The largest lead-source revenue contributor was ${topSource?.name ?? "not available"} (evidence ${evidence[1]?.id ?? "none"}).`
     ]
   };
+}
+
+function buildEvidence(data: OrgData, metrics: MetricsResponse) {
+  const period = metrics.period;
+  const evidence: Array<{ id: string; source: DatasetType; summary: string; value?: string }> = [];
+  const topRevenueRows = data.revenue
+    .filter((row) => inPeriod(row.paidAt, period))
+    .sort((a, b) => b.amount - a.amount)
+    .slice(0, 3);
+  for (const row of topRevenueRows) {
+    evidence.push({
+      id: `rev:${row.externalId ?? row.id}`,
+      source: "revenue",
+      summary: `Revenue transaction ${row.externalId ?? row.id}`,
+      value: formatCurrency(row.amount)
+    });
+  }
+  const topCompletedJobs = data.jobs
+    .filter((job) => job.status === "completed" && inPeriod(job.completedAt ?? job.scheduledAt, period))
+    .sort((a, b) => (b.revenue ?? 0) - (a.revenue ?? 0))
+    .slice(0, 3);
+  for (const job of topCompletedJobs) {
+    evidence.push({
+      id: `job:${job.externalId ?? job.id}`,
+      source: "jobs",
+      summary: `Completed ${job.jobType ?? "job"} from ${job.leadSource ?? "unknown source"}`,
+      value: formatCurrency(job.revenue ?? 0)
+    });
+  }
+  const bookedLeads = data.leads
+    .filter((lead) => inPeriod(lead.createdAtSource, period) && (lead.status === "booked" || Boolean(lead.bookedAt)))
+    .slice(0, 3);
+  for (const lead of bookedLeads) {
+    evidence.push({
+      id: `lead:${lead.externalId ?? lead.id}`,
+      source: "leads",
+      summary: `Booked lead from ${lead.source ?? "unknown source"}`,
+      value: lead.estimatedValue ? formatCurrency(lead.estimatedValue) : undefined
+    });
+  }
+  if (metrics.qualityIssues.length) {
+    evidence.push({
+      id: "quality:issues",
+      source: "jobs",
+      summary: `Data quality limits: ${metrics.qualityIssues.slice(0, 2).join(" | ")}`
+    });
+  }
+  return evidence;
 }
 
 function formatDelta(value: number | null | undefined) {

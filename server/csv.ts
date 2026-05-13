@@ -1,12 +1,12 @@
 import Papa from "papaparse";
 import { z } from "zod";
-import type { ColumnMapping, DatasetType, FileUpload } from "../shared/types";
+import type { ColumnMapping, CsvPreview, DatasetType, FileUpload } from "../shared/types";
 import { id, now, toDate, toDateOnly, toNumber } from "./utils";
 import type { OrgData } from "./store";
 
 const datasetSchema = z.enum(["customers", "leads", "jobs", "revenue", "marketing_spend"]);
 
-const targetFields: Record<DatasetType, string[]> = {
+export const targetFields: Record<DatasetType, string[]> = {
   customers: ["customer_id", "name", "email", "phone", "city", "state", "zip", "lead_source", "created_at"],
   leads: ["lead_id", "customer_id", "source", "status", "created_at", "booked_at", "estimated_value", "campaign"],
   jobs: ["job_id", "customer_id", "lead_id", "job_type", "technician", "status", "scheduled_at", "completed_at", "revenue", "cost", "lead_source"],
@@ -35,6 +35,14 @@ const aliases: Record<string, string[]> = {
   campaign: ["campaign", "campaign name"]
 };
 
+const requiredFields: Record<DatasetType, string[]> = {
+  customers: ["customer_id"],
+  leads: ["lead_id", "created_at"],
+  jobs: ["job_id", "completed_at"],
+  revenue: ["amount", "paid_at"],
+  marketing_spend: ["date", "spend"]
+};
+
 export function suggestMappings(columns: string[], datasetType: DatasetType): ColumnMapping[] {
   const lowerColumns = columns.map((column) => ({ column, normalized: column.trim().toLowerCase().replace(/[-_]/g, " ") }));
   return targetFields[datasetType]
@@ -48,11 +56,43 @@ export function suggestMappings(columns: string[], datasetType: DatasetType): Co
     .filter(Boolean) as ColumnMapping[];
 }
 
+export function previewCsv(params: {
+  organizationId: string;
+  datasetType: DatasetType;
+  filename: string;
+  buffer: Buffer;
+}): CsvPreview {
+  const datasetType = datasetSchema.parse(params.datasetType);
+  const parsed = Papa.parse<Record<string, string>>(params.buffer.toString("utf8"), {
+    header: true,
+    skipEmptyLines: true,
+    transformHeader: (header) => header.trim()
+  });
+  if (parsed.errors.length) {
+    throw Object.assign(new Error(parsed.errors[0].message), { status: 400 });
+  }
+  const rows = parsed.data;
+  const columns = parsed.meta.fields ?? [];
+  const suggestedMappings = suggestMappings(columns, datasetType);
+  const qualityIssues = validateRows(datasetType, rows, suggestedMappings);
+  return {
+    datasetType,
+    filename: params.filename,
+    rowCount: rows.length,
+    columns,
+    sampleRows: rows.slice(0, 5),
+    suggestedMappings,
+    requiredFields: requiredFields[datasetType],
+    qualityIssues
+  };
+}
+
 export function ingestCsv(params: {
   organizationId: string;
   datasetType: DatasetType;
   filename: string;
   buffer: Buffer;
+  mappings?: ColumnMapping[];
   data: OrgData;
 }) {
   const datasetType = datasetSchema.parse(params.datasetType);
@@ -67,8 +107,11 @@ export function ingestCsv(params: {
 
   const rows = parsed.data;
   const columns = parsed.meta.fields ?? [];
-  const mappings = suggestMappings(columns, datasetType);
+  const mappings = params.mappings?.length ? dedupeMappings(params.mappings) : suggestMappings(columns, datasetType);
   const qualityIssues = validateRows(datasetType, rows, mappings);
+  const hasMissingRequiredMappings = requiredFields[datasetType].some(
+    (field) => !mappings.some((mapping) => mapping.targetField === field && mapping.sourceColumn)
+  );
   const createdAt = now();
   const dataSource = {
     id: id("src"),
@@ -87,7 +130,7 @@ export function ingestCsv(params: {
     dataSourceId: dataSource.id,
     filename: params.filename,
     datasetType,
-    status: qualityIssues.some((issue) => issue.startsWith("Missing required")) ? "mapped" : "processed",
+    status: hasMissingRequiredMappings ? "mapped" : "processed",
     rowCount: rows.length,
     columns,
     mappings,
@@ -99,7 +142,9 @@ export function ingestCsv(params: {
 
   params.data.dataSources.unshift(dataSource);
   params.data.uploads.unshift(upload);
-  normalizeRows(params.organizationId, datasetType, rows, mappings, params.data);
+  if (!hasMissingRequiredMappings) {
+    normalizeRows(params.organizationId, datasetType, rows, mappings, params.data);
+  }
   return upload;
 }
 
@@ -110,20 +155,26 @@ function value(row: Record<string, string>, mappings: ColumnMapping[], field: st
 
 function validateRows(datasetType: DatasetType, rows: Record<string, string>[], mappings: ColumnMapping[]) {
   const issues: string[] = [];
-  const required: Record<DatasetType, string[]> = {
-    customers: ["customer_id"],
-    leads: ["lead_id", "created_at"],
-    jobs: ["job_id", "completed_at"],
-    revenue: ["amount", "paid_at"],
-    marketing_spend: ["date", "spend"]
-  };
-  for (const field of required[datasetType]) {
+  for (const field of requiredFields[datasetType]) {
     if (!mappings.some((mapping) => mapping.targetField === field)) {
       issues.push(`Missing required mapping for ${field}`);
     }
   }
   if (rows.length === 0) issues.push("CSV contained no data rows");
   return issues;
+}
+
+function dedupeMappings(mappings: ColumnMapping[]) {
+  const byTarget = new Map<string, ColumnMapping>();
+  for (const mapping of mappings) {
+    if (!mapping.targetField || !mapping.sourceColumn) continue;
+    byTarget.set(mapping.targetField, {
+      sourceColumn: mapping.sourceColumn,
+      targetField: mapping.targetField,
+      confidence: Number.isFinite(mapping.confidence) ? mapping.confidence : 1
+    });
+  }
+  return [...byTarget.values()];
 }
 
 function normalizeRows(organizationId: string, datasetType: DatasetType, rows: Record<string, string>[], mappings: ColumnMapping[], data: OrgData) {

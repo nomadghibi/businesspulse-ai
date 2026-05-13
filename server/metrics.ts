@@ -16,7 +16,15 @@ function metricSet(data: OrgData, period: Period) {
   const leadCount = leadRows.length;
   const bookedLeads = leadRows.filter((lead) => lead.status === "booked" || lead.bookedAt).length;
   const spend = sum(spendRows.map((row) => row.spend));
-  const repeatCustomers = new Set(jobRows.map((job) => job.customerExternalId).filter(Boolean)).size;
+  const completedRows = jobRows.filter((job) => job.status === "completed");
+  const customerJobCounts = new Map<string, number>();
+  for (const job of completedRows) {
+    const customerId = job.customerExternalId;
+    if (!customerId) continue;
+    customerJobCounts.set(customerId, (customerJobCounts.get(customerId) ?? 0) + 1);
+  }
+  const activeCustomers = customerJobCounts.size;
+  const repeatCustomers = [...customerJobCounts.values()].filter((count) => count >= 2).length;
 
   return {
     revenue,
@@ -24,7 +32,7 @@ function metricSet(data: OrgData, period: Period) {
     completedJobs,
     conversionRate: leadCount ? (bookedLeads / leadCount) * 100 : 0,
     averageJobValue: completedJobs ? revenue / completedJobs : 0,
-    repeatCustomerRate: completedJobs ? (repeatCustomers / completedJobs) * 100 : 0,
+    repeatCustomerRate: activeCustomers ? (repeatCustomers / activeCustomers) * 100 : 0,
     marketingSpend: spend,
     costPerLead: leadCount ? spend / leadCount : 0
   };
@@ -34,18 +42,20 @@ export function calculateMetrics(organizationId: string, data: OrgData, period: 
   const comparisonPeriod = previousPeriod(period);
   const current = metricSet(data, period);
   const previous = metricSet(data, comparisonPeriod);
+  const revenueRows = data.revenue.filter((row) => inPeriod(row.paidAt, period));
   const cards = [
     ["Total revenue", current.revenue, previous.revenue, formatCurrency(current.revenue), ["revenue", "jobs"]],
     ["Leads", current.leadCount, previous.leadCount, String(current.leadCount), ["leads"]],
     ["Booked jobs", current.completedJobs, previous.completedJobs, String(current.completedJobs), ["jobs"]],
     ["Conversion rate", current.conversionRate, previous.conversionRate, formatPct(current.conversionRate), ["leads", "jobs"]],
+    ["Repeat customer rate", current.repeatCustomerRate, previous.repeatCustomerRate, formatPct(current.repeatCustomerRate), ["jobs"]],
     ["Average job value", current.averageJobValue, previous.averageJobValue, formatCurrency(current.averageJobValue), ["revenue", "jobs"]],
     ["Marketing spend", current.marketingSpend, previous.marketingSpend, formatCurrency(current.marketingSpend), ["marketing_spend"]],
     ["Cost per lead", current.costPerLead, previous.costPerLead, formatCurrency(current.costPerLead), ["marketing_spend", "leads"]]
   ] as const;
 
-  const revenueByJobType = groupRevenue(data.jobs.filter((job) => inPeriod(job.completedAt, period)), "jobType");
-  const revenueByLeadSource = groupRevenue(data.jobs.filter((job) => inPeriod(job.completedAt, period)), "leadSource");
+  const revenueByJobType = groupRevenueFromTransactions(revenueRows, data.jobs, "jobType");
+  const revenueByLeadSource = groupRevenueFromTransactions(revenueRows, data.jobs, "leadSource");
   const trends = trendPoints(data, period);
   const dataSourcesUsed = new Set<DatasetType>();
   for (const card of cards) for (const source of card[4]) dataSourcesUsed.add(source);
@@ -69,11 +79,21 @@ export function calculateMetrics(organizationId: string, data: OrgData, period: 
   };
 }
 
-function groupRevenue<T extends "jobType" | "leadSource">(jobs: OrgData["jobs"], key: T) {
+function groupRevenueFromTransactions<T extends "jobType" | "leadSource">(
+  revenueRows: OrgData["revenue"],
+  jobs: OrgData["jobs"],
+  key: T
+) {
   const groups = new Map<string, number>();
+  const jobsByExternalId = new Map<string, OrgData["jobs"][number]>();
   for (const job of jobs) {
-    const name = job[key] || "Unknown";
-    groups.set(name, (groups.get(name) ?? 0) + (job.revenue ?? 0));
+    if (!job.externalId) continue;
+    jobsByExternalId.set(job.externalId, job);
+  }
+  for (const row of revenueRows) {
+    const job = row.jobExternalId ? jobsByExternalId.get(row.jobExternalId) : undefined;
+    const name = job?.[key] || "Unattributed";
+    groups.set(name, (groups.get(name) ?? 0) + row.amount);
   }
   return [...groups.entries()].map(([name, value]) => ({ name, value })).sort((a, b) => b.value - a.value);
 }
@@ -105,23 +125,28 @@ function trendPoints(data: OrgData, period: Period) {
 }
 
 export function generateAlerts(organizationId: string, data: OrgData, metrics: MetricsResponse): Alert[] {
+  const existingByKey = new Map<string, Alert>(data.alerts.map((alert) => [`${alert.metricName}:${alert.title}`, alert]));
   const alerts: Alert[] = [];
   for (const card of metrics.cards) {
     if (card.deltaPct === null || Math.abs(card.deltaPct) < 25) continue;
     const negative = card.deltaPct < 0;
     const severity = Math.abs(card.deltaPct) > 50 ? "high" : Math.abs(card.deltaPct) > 35 ? "medium" : "low";
+    const title = `${card.name} ${negative ? "dropped" : "changed sharply"}`;
+    const key = `${card.name}:${title}`;
+    const existing = existingByKey.get(key);
+    const timestamp = now();
     alerts.push({
-      id: id("alt"),
+      id: existing?.id ?? id("alt"),
       organizationId,
       metricName: card.name,
       severity,
-      title: `${card.name} ${negative ? "dropped" : "changed sharply"}`,
+      title,
       description: `${card.name} moved ${card.deltaPct.toFixed(1)}% versus the comparison period. Review the related sources before changing spend or staffing.`,
       observedChange: `${card.deltaPct.toFixed(1)}%`,
       confidence: card.source.length > 1 ? "medium" : "high",
-      status: "new",
-      createdAt: now(),
-      updatedAt: now()
+      status: existing?.status ?? "new",
+      createdAt: existing?.createdAt ?? timestamp,
+      updatedAt: timestamp
     });
   }
   data.alerts = alerts;
@@ -129,13 +154,16 @@ export function generateAlerts(organizationId: string, data: OrgData, metrics: M
 }
 
 export function generateRecommendations(organizationId: string, data: OrgData, metrics: MetricsResponse): Recommendation[] {
+  const existingByTitle = new Map<string, Recommendation>(data.recommendations.map((rec) => [rec.title, rec]));
   const revenue = metrics.cards.find((card) => card.name === "Total revenue");
   const cpl = metrics.cards.find((card) => card.name === "Cost per lead");
   const conversion = metrics.cards.find((card) => card.name === "Conversion rate");
   const recs: Recommendation[] = [];
   const add = (title: string, description: string, reason: string, priority: "low" | "medium" | "high", impact: string, confidence = "medium") => {
+    const existing = existingByTitle.get(title);
+    const timestamp = now();
     recs.push({
-      id: id("rec"),
+      id: existing?.id ?? id("rec"),
       organizationId,
       title,
       description,
@@ -143,10 +171,10 @@ export function generateRecommendations(organizationId: string, data: OrgData, m
       priority,
       expectedImpact: impact,
       confidence,
-      status: "new",
+      status: existing?.status ?? "new",
       requiresApproval: true,
-      createdAt: now(),
-      updatedAt: now()
+      createdAt: existing?.createdAt ?? timestamp,
+      updatedAt: timestamp
     });
   };
   if (revenue?.deltaPct !== null && revenue && revenue.deltaPct < -20) {
