@@ -234,6 +234,10 @@ app.use("/api", async (req, res, next) => {
   if (!token) return res.status(401).json({ error: "Missing bearer token" });
   const authUser = await storage.getAuthUser(token);
   if (!authUser) return res.status(401).json({ error: "Invalid or expired session" });
+  const mustChangeAllowed = new Set(["/auth/change-password", "/auth/logout"]);
+  if (authUser.mustChangePassword && !mustChangeAllowed.has(req.path)) {
+    return res.status(403).json({ error: "Password reset required before continuing." });
+  }
   const plan = await storage.getOrganizationPlan(authUser.organizationId);
   if (billableWriteEndpoints.has(req.path) && plan.status !== "active" && plan.status !== "trialing") {
     return res.status(402).json({ error: "Subscription inactive. Complete billing to continue." });

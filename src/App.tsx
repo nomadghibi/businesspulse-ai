@@ -75,8 +75,8 @@ export function App() {
   }
 
   useEffect(() => {
-    if (authed) void refresh();
-  }, [start, end, authed]);
+    if (authed && !mustChangePassword) void refresh();
+  }, [start, end, authed, mustChangePassword]);
 
   const tabs = [
     ["dashboard", BarChart3, "Dashboard"],
