@@ -34,7 +34,7 @@ export function App() {
   const [onboarding, setOnboarding] = useState<OnboardingStatus | null>(null);
   const [recommendations, setRecommendations] = useState<Recommendation[]>([]);
   const [alerts, setAlerts] = useState<Array<{ title: string; severity: string; description: string }>>([]);
-  const [active, setActive] = useState("dashboard");
+  const [active, setActive] = useState(() => localStorage.getItem("bp_active_tab") ?? "dashboard");
   const [start, setStart] = useState(dateDaysAgo(29));
   const [end, setEnd] = useState(dateDaysAgo(0));
   const [loading, setLoading] = useState(true);
@@ -80,6 +80,10 @@ export function App() {
   useEffect(() => {
     if (authed && !mustChangePassword) void refresh();
   }, [start, end, authed, mustChangePassword]);
+
+  useEffect(() => {
+    localStorage.setItem("bp_active_tab", active);
+  }, [active]);
 
   const tabs = [
     ["dashboard", BarChart3, "Dashboard"],

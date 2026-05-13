@@ -78,6 +78,9 @@ npm test
 - Demo request endpoint: `POST /api/public/demo-request`
 - Public analytics endpoint: `POST /api/public/track`
 - Authenticated analytics endpoint: `POST /api/analytics/track`
+- Onboarding milestone endpoint: `GET /api/onboarding-status`
+  - Returns `firstUploadAt`, `coreDatasetsCompletedAt`, and `timeToFirstInsightSeconds`
+  - Tracks first successful upload and first completion of core datasets: `jobs`, `leads`, `revenue`, `marketing_spend`
 
 ## Production Deployment
 
