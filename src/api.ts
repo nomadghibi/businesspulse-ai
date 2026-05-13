@@ -151,7 +151,7 @@ export function trackPublicEvent(eventName: string, payload: Record<string, unkn
 }
 
 export function startTrial(email: string, company?: string, phone?: string) {
-  return request<{ ok: true }>("/public/trial-start", {
+  return request<{ ok: true; organizationId: string; organizationName: string; ownerEmail: string; temporaryPassword: string }>("/public/trial-start", {
     method: "POST",
     body: JSON.stringify({ email, company, phone, source: "landing" })
   });

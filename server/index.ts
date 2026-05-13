@@ -176,8 +176,9 @@ app.post("/api/public/trial-start", async (req, res, next) => {
       source: z.string().default("landing")
     }).parse(req.body ?? {});
     await storage.createPublicLead(body);
-    await storage.trackEvent({ eventName: "trial_start", payload: body });
-    res.json({ ok: true });
+    const workspace = await storage.createTrialWorkspace({ email: body.email, company: body.company, source: body.source });
+    await storage.trackEvent({ organizationId: workspace.organizationId, eventName: "trial_start", payload: body });
+    res.json({ ok: true, ...workspace });
   } catch (error) {
     next(error);
   }

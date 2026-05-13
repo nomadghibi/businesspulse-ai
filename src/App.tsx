@@ -83,7 +83,7 @@ export function App() {
     ["settings", Database, "Settings"]
   ] as const;
 
-  if (!enteredApp) return <LandingPage onEnterApp={() => setEnteredApp(true)} />;
+  if (!enteredApp) return <LandingPage onEnterApp={() => setEnteredApp(true)} onTrialAuthed={() => { setEnteredApp(true); setAuthed(true); }} />;
   if (!authed) return <LoginGate onAuthed={() => setAuthed(true)} />;
 
   return (
@@ -176,7 +176,7 @@ function LoginGate({ onAuthed }: { onAuthed: () => void }) {
   );
 }
 
-function LandingPage({ onEnterApp }: { onEnterApp: () => void }) {
+function LandingPage({ onEnterApp, onTrialAuthed }: { onEnterApp: () => void; onTrialAuthed: () => void }) {
   const [trialEmail, setTrialEmail] = useState("");
   const [trialCompany, setTrialCompany] = useState("");
   const [trialMessage, setTrialMessage] = useState("");
@@ -268,10 +268,13 @@ function LandingPage({ onEnterApp }: { onEnterApp: () => void }) {
           <input value={trialEmail} onChange={(event) => setTrialEmail(event.target.value)} placeholder="Work email" />
           <input value={trialCompany} onChange={(event) => setTrialCompany(event.target.value)} placeholder="Company name" />
           <button className="primary" onClick={async () => {
-            await startTrial(trialEmail, trialCompany);
-            setTrialMessage("Trial request received. We will activate your workspace shortly.");
+            const trial = await startTrial(trialEmail, trialCompany);
+            const auth = await login(trial.ownerEmail, trial.temporaryPassword);
+            setToken(auth.token);
+            setTrialMessage(`Workspace created: ${trial.organizationName}. Signed in as ${trial.ownerEmail}.`);
             await trackPublicEvent("trial_form_submitted", { email: trialEmail });
             setTrialEmail("");
+            onTrialAuthed();
           }}>Start Trial</button>
         </div>
         {trialMessage ? <p>{trialMessage}</p> : null}

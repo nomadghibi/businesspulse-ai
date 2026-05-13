@@ -30,6 +30,12 @@ export interface Storage {
   setUserRole(organizationId: string, userId: string, role: AuthRole): Promise<void>;
   setUserDisabled(organizationId: string, userId: string, disabled: boolean): Promise<void>;
   createPublicLead(input: { email: string; company?: string; phone?: string; source: string }): Promise<void>;
+  createTrialWorkspace(input: { email: string; company?: string; source: string }): Promise<{
+    organizationId: string;
+    organizationName: string;
+    ownerEmail: string;
+    temporaryPassword: string;
+  }>;
   createDemoRequest(input: { name: string; email: string; company?: string; message?: string }): Promise<void>;
   trackEvent(input: { organizationId?: string; eventName: string; payload: Record<string, unknown> }): Promise<void>;
   getOrganizationPlan(organizationId: string): Promise<{ plan: string; status: string }>;
@@ -121,6 +127,30 @@ class MemoryStorage implements Storage {
   }
   async createPublicLead(input: { email: string; company?: string; phone?: string; source: string }) {
     this.publicLeads.push({ id: `lead_${crypto.randomUUID()}`, ...input });
+  }
+  async createTrialWorkspace(input: { email: string; company?: string; source: string }) {
+    const existing = [...this.users.values()].find((user) => user.email.toLowerCase() === input.email.toLowerCase());
+    if (existing) throw Object.assign(new Error("Email already registered"), { status: 409 });
+    const organizationId = `org_${crypto.randomUUID()}`;
+    const organizationName = input.company?.trim() || `${input.email.split("@")[0]} Home Services`;
+    organizations.push({
+      id: organizationId,
+      name: organizationName,
+      businessType: "Home services",
+      timezone: "America/New_York"
+    });
+    const temporaryPassword = generateTemporaryPassword();
+    const userId = `user_${crypto.randomUUID()}`;
+    this.users.set(userId, {
+      userId,
+      organizationId,
+      email: input.email.toLowerCase(),
+      role: "owner",
+      disabled: false,
+      passwordHash: hashPassword(temporaryPassword)
+    });
+    this.plans.set(organizationId, { plan: "starter", status: "trialing" });
+    return { organizationId, organizationName, ownerEmail: input.email.toLowerCase(), temporaryPassword };
   }
   async createDemoRequest(input: { name: string; email: string; company?: string; message?: string }) {
     this.demoRequests.push({ id: `demo_${crypto.randomUUID()}`, ...input });
@@ -346,6 +376,38 @@ class PostgresStorage implements Storage {
       `insert into public_leads (id, email, company, phone, source) values ($1,$2,$3,$4,$5)`,
       [`lead_${crypto.randomUUID()}`, input.email, input.company ?? null, input.phone ?? null, input.source]
     );
+  }
+  async createTrialWorkspace(input: { email: string; company?: string; source: string }) {
+    const email = input.email.toLowerCase();
+    const existing = await this.pool.query("select 1 from users where email = $1 limit 1", [email]);
+    if ((existing.rowCount ?? 0) > 0) throw Object.assign(new Error("Email already registered"), { status: 409 });
+    const organizationId = `org_${crypto.randomUUID()}`;
+    const organizationName = input.company?.trim() || `${email.split("@")[0]} Home Services`;
+    const userId = `user_${crypto.randomUUID()}`;
+    const memberId = `member_${crypto.randomUUID()}`;
+    const temporaryPassword = generateTemporaryPassword();
+    await this.pool.query("begin");
+    try {
+      await this.pool.query(
+        `insert into organizations (id, name, business_type, timezone, created_at, updated_at)
+         values ($1, $2, $3, $4, now(), now())`,
+        [organizationId, organizationName, "Home services", "America/New_York"]
+      );
+      await this.pool.query(
+        `insert into users (id, email, password_hash, disabled) values ($1, $2, $3, false)`,
+        [userId, email, hashPassword(temporaryPassword)]
+      );
+      await this.pool.query(
+        `insert into organization_members (id, organization_id, user_id, role) values ($1, $2, $3, 'owner')`,
+        [memberId, organizationId, userId]
+      );
+      await this.pool.query("commit");
+    } catch (error) {
+      await this.pool.query("rollback");
+      throw error;
+    }
+    await this.upsertOrganizationPlan(organizationId, "starter", "trialing");
+    return { organizationId, organizationName, ownerEmail: email, temporaryPassword };
   }
   async createDemoRequest(input: { name: string; email: string; company?: string; message?: string }) {
     await this.pool.query(
@@ -652,4 +714,8 @@ function verifyPassword(password: string, storedHash: string) {
 
 function isBcryptHash(hash: string) {
   return hash.startsWith("$2a$") || hash.startsWith("$2b$") || hash.startsWith("$2y$");
+}
+
+function generateTemporaryPassword() {
+  return `bp-${randomBytes(6).toString("hex")}`;
 }

@@ -29,4 +29,9 @@ assert.equal(disabledLogin, null, "disabled user should not log in");
 const tokenUser = await storage.getAuthUser(owner!.token);
 assert.equal(tokenUser?.organizationId, DEMO_ORG_ID, "session should retain org scope");
 
+const trial = await storage.createTrialWorkspace({ email: "new.owner@company.com", company: "NewCo", source: "landing" });
+assert.equal(trial.organizationName, "NewCo");
+const trialLogin = await storage.login(trial.ownerEmail, trial.temporaryPassword);
+assert.ok(trialLogin, "trial owner should be able to log in with temporary password");
+
 console.log("security.test.ts passed");
