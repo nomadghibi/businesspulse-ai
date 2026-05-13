@@ -1,4 +1,4 @@
-import { AlertTriangle, BarChart3, Bot, Database, FileText, Lightbulb, Loader2, Upload } from "lucide-react";
+import { AlertTriangle, ArrowRight, BarChart3, Bot, CheckCircle2, Database, FileText, Lightbulb, Loader2, Upload } from "lucide-react";
 import { useEffect, useMemo, useState } from "react";
 import { Area, AreaChart, Bar, BarChart, CartesianGrid, ResponsiveContainer, Tooltip, XAxis, YAxis } from "recharts";
 import type { AiAnswer, DatasetType, FileUpload, MetricsResponse, Organization, Recommendation, Report } from "../shared/types";
@@ -33,6 +33,7 @@ export function App() {
   const [authed, setAuthed] = useState(Boolean(localStorage.getItem("bp_token")));
   const [syncMessage, setSyncMessage] = useState<string>("");
   const [users, setUsers] = useState<AppUser[]>([]);
+  const [enteredApp, setEnteredApp] = useState(false);
 
   async function refresh() {
     setLoading(true);
@@ -74,10 +75,11 @@ export function App() {
     ["settings", Database, "Settings"]
   ] as const;
 
+  if (!enteredApp) return <LandingPage onEnterApp={() => setEnteredApp(true)} />;
   if (!authed) return <LoginGate onAuthed={() => setAuthed(true)} />;
 
   return (
-    <main>
+    <main className="app-shell">
       <aside className="sidebar">
         <div className="brand">
           <div className="mark">BP</div>
@@ -109,6 +111,7 @@ export function App() {
               try { await logout(); } catch {}
               clearToken();
               setAuthed(false);
+              setEnteredApp(false);
             }}>Logout</button>
           </div>
         </header>
@@ -137,7 +140,7 @@ function LoginGate({ onAuthed }: { onAuthed: () => void }) {
   const [error, setError] = useState("");
   const [busy, setBusy] = useState(false);
   return (
-    <main>
+    <main className="login-shell">
       <section className="workspace">
         <header className="topbar"><h1>BusinessPulse AI Login</h1></header>
         <section className="panel" style={{ maxWidth: 460 }}>
@@ -160,6 +163,84 @@ function LoginGate({ onAuthed }: { onAuthed: () => void }) {
             }}>{busy ? "Signing in..." : "Sign in"}</button>
           </div>
         </section>
+      </section>
+    </main>
+  );
+}
+
+function LandingPage({ onEnterApp }: { onEnterApp: () => void }) {
+  return (
+    <main className="landing-shell">
+      <section className="hero">
+        <header className="landing-nav">
+          <div className="landing-brand">
+            <div className="mark">BP</div>
+            <strong>BusinessPulse AI</strong>
+          </div>
+          <button className="primary" onClick={onEnterApp}>Enter App <ArrowRight size={16} /></button>
+        </header>
+        <div className="hero-content">
+          <p className="badge">AI Business Analyst For Home Services</p>
+          <h1>Know what changed in revenue, leads, and jobs before it costs you this week.</h1>
+          <p className="hero-copy">BusinessPulse turns your service data into executive clarity with grounded answers, anomaly alerts, and actions your team can ship immediately.</p>
+          <div className="hero-actions">
+            <button className="primary" onClick={onEnterApp}>Start Free Trial <ArrowRight size={16} /></button>
+            <button onClick={onEnterApp}>Book Demo</button>
+          </div>
+        </div>
+      </section>
+
+      <section className="landing-band stats">
+        {[
+          ["10 min", "to first insight"],
+          ["98%", "answer traceability"],
+          ["7 KPIs", "monitored continuously"],
+          ["1 workspace", "for owners and ops"]
+        ].map(([value, label]) => (
+          <article key={label}>
+            <strong>{value}</strong>
+            <span>{label}</span>
+          </article>
+        ))}
+      </section>
+
+      <section className="landing-band features">
+        <h2>Built for operators, not analysts</h2>
+        <div className="feature-grid">
+          {[
+            "Instant KPI visibility across revenue, lead quality, conversion, and spend",
+            "Grounded AI answers with assumptions, confidence, and supporting metrics",
+            "Daily briefs and anomaly alerts that point to concrete next actions",
+            "Role-based access, tenant isolation, and auditable AI runs"
+          ].map((item) => (
+            <div className="feature-item" key={item}>
+              <CheckCircle2 size={18} />
+              <p>{item}</p>
+            </div>
+          ))}
+        </div>
+      </section>
+
+      <section className="landing-band pricing">
+        <h2>Simple launch pricing</h2>
+        <div className="pricing-row">
+          <article>
+            <h3>Starter</h3>
+            <strong>$299<span>/mo</span></strong>
+            <p>Single location, core dashboards, Ask AI, and weekly briefs.</p>
+          </article>
+          <article>
+            <h3>Growth</h3>
+            <strong>$799<span>/mo</span></strong>
+            <p>Multi-location rollups, advanced recommendations, and team roles.</p>
+          </article>
+          <article>
+            <h3>Pro</h3>
+            <strong>Custom</strong>
+            <p>Integration setup, custom KPI models, and priority support.</p>
+          </article>
+        </div>
+        <button className="primary" onClick={onEnterApp}>Launch BusinessPulse <ArrowRight size={16} /></button>
       </section>
     </main>
   );
