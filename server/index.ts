@@ -17,6 +17,7 @@ const upload = multer({ storage: multer.memoryStorage(), limits: { fileSize: 5 *
 const port = Number(process.env.PORT ?? 5055);
 const storage = getStorage();
 const loginAttempts = new Map<string, { count: number; blockedUntil: number }>();
+const publicRateLimits = new Map<string, { count: number; resetAt: number }>();
 const processingWebhookEvents = new Set<string>();
 const billableWriteEndpoints = new Set(["/upload", "/reports", "/integrations/stripe/sync"]);
 
@@ -124,6 +125,24 @@ app.use(express.json({ limit: "1mb" }));
 
 app.get("/api/health", (_req, res) => {
   res.json({ ok: true, service: "businesspulse-ai-api" });
+});
+
+app.use("/api/public", (req, res, next) => {
+  const ip = req.ip || "unknown";
+  const nowTs = Date.now();
+  const windowMs = 10 * 60 * 1000;
+  const maxRequests = 40;
+  const state = publicRateLimits.get(ip);
+  if (!state || state.resetAt <= nowTs) {
+    publicRateLimits.set(ip, { count: 1, resetAt: nowTs + windowMs });
+    return next();
+  }
+  if (state.count >= maxRequests) {
+    return res.status(429).json({ error: "Too many public requests. Try again shortly." });
+  }
+  state.count += 1;
+  publicRateLimits.set(ip, state);
+  next();
 });
 
 app.post("/api/auth/login", async (req, res, next) => {
