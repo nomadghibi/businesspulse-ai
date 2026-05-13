@@ -14,6 +14,7 @@ export interface AuthUser {
   email: string;
   role: AuthRole;
   token: string;
+  mustChangePassword: boolean;
 }
 
 export interface Storage {
@@ -37,6 +38,7 @@ export interface Storage {
     temporaryPassword: string;
   }>;
   createDemoRequest(input: { name: string; email: string; company?: string; message?: string }): Promise<void>;
+  changePassword(organizationId: string, userId: string, currentPassword: string, nextPassword: string): Promise<void>;
   trackEvent(input: { organizationId?: string; eventName: string; payload: Record<string, unknown> }): Promise<void>;
   getOrganizationPlan(organizationId: string): Promise<{ plan: string; status: string }>;
   upsertOrganizationPlan(
@@ -52,8 +54,8 @@ export interface Storage {
 
 class MemoryStorage implements Storage {
   private sessions = new Map<string, AuthUser>();
-  private users = new Map<string, { userId: string; organizationId: string; email: string; role: AuthRole; disabled: boolean; passwordHash: string }>([
-    ["user_demo_owner", { userId: "user_demo_owner", organizationId: DEMO_ORG_ID, email: "owner@businesspulse.local", role: "owner", disabled: false, passwordHash: hashPassword("demo1234") }]
+  private users = new Map<string, { userId: string; organizationId: string; email: string; role: AuthRole; disabled: boolean; passwordHash: string; mustChangePassword: boolean }>([
+    ["user_demo_owner", { userId: "user_demo_owner", organizationId: DEMO_ORG_ID, email: "owner@businesspulse.local", role: "owner", disabled: false, passwordHash: hashPassword("demo1234"), mustChangePassword: false }]
   ]);
   private publicLeads: Array<{ id: string; email: string; company?: string; phone?: string; source: string }> = [];
   private demoRequests: Array<{ id: string; name: string; email: string; company?: string; message?: string }> = [];
@@ -92,7 +94,8 @@ class MemoryStorage implements Storage {
       organizationId: found.organizationId,
       email,
       role: found.role,
-      token
+      token,
+      mustChangePassword: found.mustChangePassword
     };
     this.sessions.set(token, authUser);
     return authUser;
@@ -110,7 +113,7 @@ class MemoryStorage implements Storage {
   }
   async inviteUser(organizationId: string, email: string, role: AuthRole, password: string) {
     const userId = `user_${crypto.randomUUID()}`;
-    this.users.set(userId, { userId, organizationId, email, role, disabled: false, passwordHash: hashPassword(password) });
+    this.users.set(userId, { userId, organizationId, email, role, disabled: false, passwordHash: hashPassword(password), mustChangePassword: false });
     return { userId, email, role };
   }
   async setUserRole(organizationId: string, userId: string, role: AuthRole) {
@@ -147,13 +150,22 @@ class MemoryStorage implements Storage {
       email: input.email.toLowerCase(),
       role: "owner",
       disabled: false,
-      passwordHash: hashPassword(temporaryPassword)
+      passwordHash: hashPassword(temporaryPassword),
+      mustChangePassword: true
     });
     this.plans.set(organizationId, { plan: "starter", status: "trialing" });
     return { organizationId, organizationName, ownerEmail: input.email.toLowerCase(), temporaryPassword };
   }
   async createDemoRequest(input: { name: string; email: string; company?: string; message?: string }) {
     this.demoRequests.push({ id: `demo_${crypto.randomUUID()}`, ...input });
+  }
+  async changePassword(organizationId: string, userId: string, currentPassword: string, nextPassword: string) {
+    const user = this.users.get(userId);
+    if (!user || user.organizationId !== organizationId) throw Object.assign(new Error("User not found"), { status: 404 });
+    if (!verifyPassword(currentPassword, user.passwordHash)) throw Object.assign(new Error("Current password is incorrect"), { status: 401 });
+    user.passwordHash = hashPassword(nextPassword);
+    user.mustChangePassword = false;
+    this.users.set(userId, user);
   }
   async trackEvent(input: { organizationId?: string; eventName: string; payload: Record<string, unknown> }) {
     this.events.push({ id: `evt_${crypto.randomUUID()}`, ...input });
@@ -189,6 +201,7 @@ class PostgresStorage implements Storage {
     await this.applyMigration("002_users_relational_and_indexes", resolve(process.cwd(), "server/migrations/002_users_relational_and_indexes.sql"));
     await this.applyMigration("003_conversion_analytics_billing", resolve(process.cwd(), "server/migrations/003_conversion_analytics_billing.sql"));
     await this.applyMigration("004_webhook_idempotency", resolve(process.cwd(), "server/migrations/004_webhook_idempotency.sql"));
+    await this.applyMigration("005_user_password_reset_flag", resolve(process.cwd(), "server/migrations/005_user_password_reset_flag.sql"));
 
     const org = organizations[0];
     const existing = await this.pool.query("select id from organizations where id = $1", [DEMO_ORG_ID]);
@@ -294,7 +307,7 @@ class PostgresStorage implements Storage {
     return run;
   }
   async login(email: string, password: string) {
-    const { rows } = await this.pool.query<{ id: string; password_hash: string; disabled: boolean }>("select id, password_hash, disabled from users where email = $1", [email]);
+    const { rows } = await this.pool.query<{ id: string; password_hash: string; disabled: boolean; must_change_password: boolean }>("select id, password_hash, disabled, must_change_password from users where email = $1", [email]);
     const user = rows[0];
     if (!user || user.disabled) return null;
     const valid = verifyPassword(password, user.password_hash);
@@ -314,11 +327,11 @@ class PostgresStorage implements Storage {
        values ($1, $2, $3, now() + interval '7 days')`,
       [hashToken(token), user.id, member.organization_id]
     );
-    return { userId: user.id, organizationId: member.organization_id, email, role: member.role, token };
+    return { userId: user.id, organizationId: member.organization_id, email, role: member.role, token, mustChangePassword: user.must_change_password };
   }
   async getAuthUser(token: string) {
-    const { rows } = await this.pool.query<{ user_id: string; organization_id: string; email: string; role: AuthRole; disabled: boolean }>(
-      `select s.user_id, s.organization_id, u.email, m.role, u.disabled
+    const { rows } = await this.pool.query<{ user_id: string; organization_id: string; email: string; role: AuthRole; disabled: boolean; must_change_password: boolean }>(
+      `select s.user_id, s.organization_id, u.email, m.role, u.disabled, u.must_change_password
        from sessions s
        join users u on u.id = s.user_id
        join organization_members m on m.user_id = s.user_id and m.organization_id = s.organization_id
@@ -328,7 +341,7 @@ class PostgresStorage implements Storage {
     if (!rows.length) return null;
     const row = rows[0];
     if (row.disabled) return null;
-    return { userId: row.user_id, organizationId: row.organization_id, email: row.email, role: row.role, token };
+    return { userId: row.user_id, organizationId: row.organization_id, email: row.email, role: row.role, token, mustChangePassword: row.must_change_password };
   }
   async revokeSession(token: string) {
     await this.pool.query("delete from sessions where token_hash = $1", [hashToken(token)]);
@@ -348,7 +361,7 @@ class PostgresStorage implements Storage {
     const userId = `user_${crypto.randomUUID()}`;
     await this.pool.query("begin");
     try {
-      await this.pool.query(`insert into users (id, email, password_hash, disabled) values ($1, $2, $3, false)`, [userId, email, hashPassword(password)]);
+      await this.pool.query(`insert into users (id, email, password_hash, disabled, must_change_password) values ($1, $2, $3, false, false)`, [userId, email, hashPassword(password)]);
       await this.pool.query(`insert into organization_members (id, organization_id, user_id, role) values ($1, $2, $3, $4)`, [`member_${crypto.randomUUID()}`, organizationId, userId, role]);
       await this.pool.query("commit");
       return { userId, email, role };
@@ -394,7 +407,7 @@ class PostgresStorage implements Storage {
         [organizationId, organizationName, "Home services", "America/New_York"]
       );
       await this.pool.query(
-        `insert into users (id, email, password_hash, disabled) values ($1, $2, $3, false)`,
+        `insert into users (id, email, password_hash, disabled, must_change_password) values ($1, $2, $3, false, true)`,
         [userId, email, hashPassword(temporaryPassword)]
       );
       await this.pool.query(
@@ -413,6 +426,25 @@ class PostgresStorage implements Storage {
     await this.pool.query(
       `insert into demo_requests (id, name, email, company, message) values ($1,$2,$3,$4,$5)`,
       [`demo_${crypto.randomUUID()}`, input.name, input.email, input.company ?? null, input.message ?? null]
+    );
+  }
+  async changePassword(organizationId: string, userId: string, currentPassword: string, nextPassword: string) {
+    const existing = await this.pool.query<{ password_hash: string }>(
+      `select u.password_hash
+       from users u
+       join organization_members m on m.user_id = u.id
+       where u.id = $1 and m.organization_id = $2
+       limit 1`,
+      [userId, organizationId]
+    );
+    const row = existing.rows[0];
+    if (!row) throw Object.assign(new Error("User not found"), { status: 404 });
+    if (!verifyPassword(currentPassword, row.password_hash)) throw Object.assign(new Error("Current password is incorrect"), { status: 401 });
+    await this.pool.query(
+      `update users
+       set password_hash = $2, must_change_password = false
+       where id = $1`,
+      [userId, hashPassword(nextPassword)]
     );
   }
   async trackEvent(input: { organizationId?: string; eventName: string; payload: Record<string, unknown> }) {

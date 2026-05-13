@@ -11,6 +11,7 @@ assert.equal(badLogin, null, "invalid password must fail");
 const owner = await storage.login("owner@businesspulse.local", "demo1234");
 assert.ok(owner, "owner login should succeed");
 assert.equal(owner?.role, "owner");
+assert.equal(owner?.mustChangePassword, false);
 
 const invited = await storage.inviteUser(DEMO_ORG_ID, "viewer1@businesspulse.local", "viewer", "viewer1234");
 assert.ok(invited.userId.startsWith("user_"));
@@ -33,5 +34,10 @@ const trial = await storage.createTrialWorkspace({ email: "new.owner@company.com
 assert.equal(trial.organizationName, "NewCo");
 const trialLogin = await storage.login(trial.ownerEmail, trial.temporaryPassword);
 assert.ok(trialLogin, "trial owner should be able to log in with temporary password");
+assert.equal(trialLogin?.mustChangePassword, true);
+await storage.changePassword(trialLogin!.organizationId, trialLogin!.userId, trial.temporaryPassword, "newsecure123");
+const trialLoginAfter = await storage.login(trial.ownerEmail, "newsecure123");
+assert.ok(trialLoginAfter);
+assert.equal(trialLoginAfter?.mustChangePassword, false);
 
 console.log("security.test.ts passed");

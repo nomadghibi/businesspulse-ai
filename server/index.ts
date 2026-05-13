@@ -160,8 +160,23 @@ app.post("/api/auth/login", async (req, res, next) => {
       token: authUser.token,
       organizationId: authUser.organizationId,
       role: authUser.role,
-      email: authUser.email
+      email: authUser.email,
+      mustChangePassword: authUser.mustChangePassword
     });
+  } catch (error) {
+    next(error);
+  }
+});
+
+app.post("/api/auth/change-password", async (req, res, next) => {
+  try {
+    const token = req.header("authorization")?.replace(/^Bearer\s+/i, "").trim();
+    if (!token) return res.status(401).json({ error: "Missing bearer token" });
+    const authUser = await storage.getAuthUser(token);
+    if (!authUser) return res.status(401).json({ error: "Invalid or expired session" });
+    const body = z.object({ currentPassword: z.string().min(6), nextPassword: z.string().min(8) }).parse(req.body ?? {});
+    await storage.changePassword(authUser.organizationId, authUser.userId, body.currentPassword, body.nextPassword);
+    res.json({ ok: true });
   } catch (error) {
     next(error);
   }

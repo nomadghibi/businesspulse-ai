@@ -2,7 +2,7 @@ import { AlertTriangle, ArrowRight, BarChart3, Bot, CheckCircle2, Database, File
 import { useEffect, useMemo, useState } from "react";
 import { Area, AreaChart, Bar, BarChart, CartesianGrid, ResponsiveContainer, Tooltip, XAxis, YAxis } from "recharts";
 import type { AiAnswer, ColumnMapping, CsvPreview, DatasetType, FileUpload, MetricsResponse, Organization, Recommendation, Report } from "../shared/types";
-import { askAi, clearToken, commitUploadCsv, createCheckout, type AppUser, generateReport, getAlerts, getMetrics, getOrganization, getRecommendations, getReports, getUploads, getUsers, inviteUser, login, logout, previewUploadCsv, requestDemo, setToken, startTrial, syncStripe, trackEvent, trackPublicEvent, updateUserRole, updateUserStatus } from "./api";
+import { askAi, changePassword, clearToken, commitUploadCsv, createCheckout, type AppUser, generateReport, getAlerts, getMetrics, getOrganization, getRecommendations, getReports, getUploads, getUsers, inviteUser, login, logout, previewUploadCsv, requestDemo, setToken, startTrial, syncStripe, trackEvent, trackPublicEvent, updateUserRole, updateUserStatus } from "./api";
 
 const datasetTypes: Array<{ value: DatasetType; label: string }> = [
   { value: "customers", label: "Customers" },
@@ -42,6 +42,10 @@ export function App() {
   const [syncMessage, setSyncMessage] = useState<string>("");
   const [users, setUsers] = useState<AppUser[]>([]);
   const [enteredApp, setEnteredApp] = useState(false);
+  const [mustChangePassword, setMustChangePassword] = useState(false);
+  const [currentPassword, setCurrentPassword] = useState("");
+  const [nextPassword, setNextPassword] = useState("");
+  const [passwordMessage, setPasswordMessage] = useState("");
 
   async function refresh() {
     setLoading(true);
@@ -83,8 +87,8 @@ export function App() {
     ["settings", Database, "Settings"]
   ] as const;
 
-  if (!enteredApp) return <LandingPage onEnterApp={() => setEnteredApp(true)} onTrialAuthed={() => { setEnteredApp(true); setAuthed(true); }} />;
-  if (!authed) return <LoginGate onAuthed={() => setAuthed(true)} />;
+  if (!enteredApp) return <LandingPage onEnterApp={() => setEnteredApp(true)} onTrialAuthed={(mustReset) => { setEnteredApp(true); setAuthed(true); setMustChangePassword(mustReset); }} />;
+  if (!authed) return <LoginGate onAuthed={(mustReset) => { setAuthed(true); setMustChangePassword(mustReset); }} />;
 
   return (
     <main className="app-shell">
@@ -123,6 +127,23 @@ export function App() {
             }}>Logout</button>
           </div>
         </header>
+        {mustChangePassword ? (
+          <section className="panel">
+            <h2>Update Password</h2>
+            <div className="upload-row">
+              <input type="password" value={currentPassword} onChange={(event) => setCurrentPassword(event.target.value)} placeholder="Current password" />
+              <input type="password" value={nextPassword} onChange={(event) => setNextPassword(event.target.value)} placeholder="New password (min 8 chars)" />
+              <button className="primary" onClick={async () => {
+                await changePassword(currentPassword, nextPassword);
+                setMustChangePassword(false);
+                setCurrentPassword("");
+                setNextPassword("");
+                setPasswordMessage("Password updated.");
+              }}>Update Password</button>
+            </div>
+            {passwordMessage ? <p>{passwordMessage}</p> : null}
+          </section>
+        ) : null}
 
         {error ? <div className="notice error">{error}</div> : null}
         {loading && !metrics ? <Loading /> : null}
@@ -142,7 +163,7 @@ export function App() {
   );
 }
 
-function LoginGate({ onAuthed }: { onAuthed: () => void }) {
+function LoginGate({ onAuthed }: { onAuthed: (mustReset: boolean) => void }) {
   const [email, setEmail] = useState("owner@businesspulse.local");
   const [password, setPassword] = useState("demo1234");
   const [error, setError] = useState("");
@@ -162,7 +183,7 @@ function LoginGate({ onAuthed }: { onAuthed: () => void }) {
               try {
                 const response = await login(email, password);
                 setToken(response.token);
-                onAuthed();
+                onAuthed(Boolean(response.mustChangePassword));
               } catch (err) {
                 setError(err instanceof Error ? err.message : "Login failed");
               } finally {
@@ -176,7 +197,7 @@ function LoginGate({ onAuthed }: { onAuthed: () => void }) {
   );
 }
 
-function LandingPage({ onEnterApp, onTrialAuthed }: { onEnterApp: () => void; onTrialAuthed: () => void }) {
+function LandingPage({ onEnterApp, onTrialAuthed }: { onEnterApp: () => void; onTrialAuthed: (mustReset: boolean) => void }) {
   const [trialEmail, setTrialEmail] = useState("");
   const [trialCompany, setTrialCompany] = useState("");
   const [trialMessage, setTrialMessage] = useState("");
@@ -274,7 +295,7 @@ function LandingPage({ onEnterApp, onTrialAuthed }: { onEnterApp: () => void; on
             setTrialMessage(`Workspace created: ${trial.organizationName}. Signed in as ${trial.ownerEmail}.`);
             await trackPublicEvent("trial_form_submitted", { email: trialEmail });
             setTrialEmail("");
-            onTrialAuthed();
+            onTrialAuthed(Boolean(auth.mustChangePassword));
           }}>Start Trial</button>
         </div>
         {trialMessage ? <p>{trialMessage}</p> : null}

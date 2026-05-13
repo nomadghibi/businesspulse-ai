@@ -30,7 +30,7 @@ async function request<T>(path: string, init?: RequestInit): Promise<T> {
 }
 
 export function login(email: string, password: string) {
-  return request<{ token: string; organizationId: string; role: string; email: string }>("/auth/login", {
+  return request<{ token: string; organizationId: string; role: string; email: string; mustChangePassword: boolean }>("/auth/login", {
     method: "POST",
     body: JSON.stringify({ email, password })
   });
@@ -38,6 +38,13 @@ export function login(email: string, password: string) {
 
 export function logout() {
   return request<{ ok: true }>("/auth/logout", { method: "POST" });
+}
+
+export function changePassword(currentPassword: string, nextPassword: string) {
+  return request<{ ok: true }>("/auth/change-password", {
+    method: "POST",
+    body: JSON.stringify({ currentPassword, nextPassword })
+  });
 }
 
 export function getOrganization() {
