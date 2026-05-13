@@ -1,0 +1,28 @@
+# BusinessPulse AI Skills Index
+
+- `skill-router` — Routes requests to the right specialist skill and defines the execution order.
+- `context-engineering` — Creates task-specific context briefs so Codex/Claude can build without drifting.
+- `product-manager` — Creates PRDs, feature specs, user stories, acceptance criteria, and roadmap decisions.
+- `senior-fullstack-engineer` — Builds frontend, backend, API routes, forms, dashboards, reports, and app logic.
+- `architecture-reviewer` — Reviews system architecture, data flow, service boundaries, scalability, and MVP simplicity.
+- `database-architect` — Designs Postgres/Supabase schema, RLS, indexes, migrations, and tenant isolation.
+- `data-ingestion-specialist` — Designs CSV upload, column mapping, validation, normalization, and data quality reporting.
+- `data-analyst` — Defines metrics, formulas, dashboard KPIs, anomaly logic, and analysis workflows.
+- `ai-agent-designer` — Designs AI agents, tool permissions, orchestration, guardrails, and audit logging.
+- `prompt-contracts-specialist` — Creates strict AI prompt contracts, JSON output schemas, and fallback behavior.
+- `security-reviewer` — Audits auth, RBAC, tenant isolation, file uploads, APIs, secrets, SQL, and integrations.
+- `ai-safety-reviewer` — Reviews AI for hallucination, prompt injection, unsafe actions, unsupported claims, and data leakage.
+- `qa-evaluator` — Creates QA plans, acceptance tests, edge cases, security tests, and AI evaluation tests.
+- `test-automation-engineer` — Writes unit, integration, API, and Playwright E2E tests.
+- `ux-ui-designer` — Designs simple owner-friendly dashboards, upload flows, reports, Ask AI screens, and recommendation UI.
+- `accessibility-reviewer` — Checks keyboard navigation, semantic HTML, labels, contrast, focus states, and form accessibility.
+- `performance-reviewer` — Reviews frontend/backend/database/AI performance, indexes, caching, and latency risks.
+- `devops-release-engineer` — Prepares deployment, CI/CD, environment variables, migrations, smoke tests, and rollback plans.
+- `observability-engineer` — Adds logging, monitoring, Sentry-style error tracking, AI run logs, and operational alerts.
+- `billing-subscription-specialist` — Designs Stripe pricing, checkout, webhooks, subscription states, feature gating, and billing tests.
+- `privacy-compliance-reviewer` — Prepares privacy, terms, retention, deletion, AI provider disclosure, and data handling requirements.
+- `launch-planner` — Plans beta, pilot, paid launch, demo flow, launch blockers, offers, and success metrics.
+- `api-integration-specialist` — Designs external integrations such as Stripe, QuickBooks, Google Ads, Meta Ads, CallRail, CRMs, and job platforms.
+- `analytics-engineer` — Creates reliable metric layers, aggregation tables, metric snapshots, and reporting models.
+- `reporting-copywriter` — Writes clear business-owner-friendly executive summaries, alerts, recommendations, CTAs, and report copy.
+- `customer-success-specialist` — Designs onboarding, help docs, pilot support, activation milestones, and feedback loops.

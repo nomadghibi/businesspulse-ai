@@ -1,0 +1,33 @@
+{
+  "name": "businesspulse_production_skills_pack",
+  "version": "2.0",
+  "skill_count": 26,
+  "skills": [
+    "skill-router",
+    "context-engineering",
+    "product-manager",
+    "senior-fullstack-engineer",
+    "architecture-reviewer",
+    "database-architect",
+    "data-ingestion-specialist",
+    "data-analyst",
+    "ai-agent-designer",
+    "prompt-contracts-specialist",
+    "security-reviewer",
+    "ai-safety-reviewer",
+    "qa-evaluator",
+    "test-automation-engineer",
+    "ux-ui-designer",
+    "accessibility-reviewer",
+    "performance-reviewer",
+    "devops-release-engineer",
+    "observability-engineer",
+    "billing-subscription-specialist",
+    "privacy-compliance-reviewer",
+    "launch-planner",
+    "api-integration-specialist",
+    "analytics-engineer",
+    "reporting-copywriter",
+    "customer-success-specialist"
+  ]
+}
