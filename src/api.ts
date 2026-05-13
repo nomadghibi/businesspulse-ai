@@ -8,6 +8,9 @@ function getToken() {
 export function setToken(token: string) {
   localStorage.setItem(TOKEN_KEY, token);
 }
+export function clearToken() {
+  localStorage.removeItem(TOKEN_KEY);
+}
 
 async function request<T>(path: string, init?: RequestInit): Promise<T> {
   const token = getToken();
@@ -31,6 +34,10 @@ export function login(email: string, password: string) {
     method: "POST",
     body: JSON.stringify({ email, password })
   });
+}
+
+export function logout() {
+  return request<{ ok: true }>("/auth/logout", { method: "POST" });
 }
 
 export function getOrganization() {

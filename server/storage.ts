@@ -24,6 +24,7 @@ export interface Storage {
   createAgentRun(organizationId: string, input: unknown, triggerType: AgentRun["triggerType"], agentName?: string): Promise<AgentRun>;
   login(email: string, password: string): Promise<AuthUser | null>;
   getAuthUser(token: string): Promise<AuthUser | null>;
+  revokeSession(token: string): Promise<void>;
   listUsers(organizationId: string): Promise<Array<{ userId: string; email: string; role: AuthRole; disabled: boolean }>>;
   inviteUser(organizationId: string, email: string, role: AuthRole, password: string): Promise<{ userId: string; email: string; role: AuthRole }>;
   setUserRole(organizationId: string, userId: string, role: AuthRole): Promise<void>;
@@ -74,6 +75,9 @@ class MemoryStorage implements Storage {
   }
   async getAuthUser(token: string) {
     return this.sessions.get(token) ?? null;
+  }
+  async revokeSession(token: string) {
+    this.sessions.delete(token);
   }
   async listUsers(organizationId: string) {
     return [...this.users.values()]
@@ -246,6 +250,9 @@ class PostgresStorage implements Storage {
     const row = rows[0];
     if (row.disabled) return null;
     return { userId: row.user_id, organizationId: row.organization_id, email: row.email, role: row.role, token };
+  }
+  async revokeSession(token: string) {
+    await this.pool.query("delete from sessions where token_hash = $1", [hashToken(token)]);
   }
   async listUsers(organizationId: string) {
     const { rows } = await this.pool.query<{ user_id: string; email: string; role: AuthRole; disabled: boolean }>(

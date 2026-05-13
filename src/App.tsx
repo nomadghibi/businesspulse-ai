@@ -2,7 +2,7 @@ import { AlertTriangle, BarChart3, Bot, Database, FileText, Lightbulb, Loader2, 
 import { useEffect, useMemo, useState } from "react";
 import { Area, AreaChart, Bar, BarChart, CartesianGrid, ResponsiveContainer, Tooltip, XAxis, YAxis } from "recharts";
 import type { AiAnswer, DatasetType, FileUpload, MetricsResponse, Organization, Recommendation, Report } from "../shared/types";
-import { askAi, type AppUser, generateReport, getAlerts, getMetrics, getOrganization, getRecommendations, getReports, getUploads, getUsers, inviteUser, login, setToken, syncStripe, updateUserRole, updateUserStatus, uploadCsv } from "./api";
+import { askAi, clearToken, type AppUser, generateReport, getAlerts, getMetrics, getOrganization, getRecommendations, getReports, getUploads, getUsers, inviteUser, login, logout, setToken, syncStripe, updateUserRole, updateUserStatus, uploadCsv } from "./api";
 
 const datasetTypes: Array<{ value: DatasetType; label: string }> = [
   { value: "customers", label: "Customers" },
@@ -105,6 +105,11 @@ export function App() {
           <div className="date-controls">
             <input type="date" value={start} onChange={(event) => setStart(event.target.value)} />
             <input type="date" value={end} onChange={(event) => setEnd(event.target.value)} />
+            <button onClick={async () => {
+              try { await logout(); } catch {}
+              clearToken();
+              setAuthed(false);
+            }}>Logout</button>
           </div>
         </header>
 

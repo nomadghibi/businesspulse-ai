@@ -14,6 +14,7 @@ const app = express();
 const upload = multer({ storage: multer.memoryStorage(), limits: { fileSize: 5 * 1024 * 1024 } });
 const port = Number(process.env.PORT ?? 5055);
 const storage = getStorage();
+const loginAttempts = new Map<string, { count: number; blockedUntil: number }>();
 
 app.use(cors());
 app.post("/api/integrations/stripe/webhook", express.raw({ type: "application/json" }), async (req, res, next) => {
@@ -78,8 +79,20 @@ app.get("/api/health", (_req, res) => {
 app.post("/api/auth/login", async (req, res, next) => {
   try {
     const body = z.object({ email: z.string().email(), password: z.string().min(6) }).parse(req.body);
+    const key = `${req.ip}:${body.email.toLowerCase()}`;
+    const nowTs = Date.now();
+    const state = loginAttempts.get(key);
+    if (state && state.blockedUntil > nowTs) {
+      return res.status(429).json({ error: "Too many login attempts. Try again shortly." });
+    }
     const authUser = await storage.login(body.email, body.password);
-    if (!authUser) return res.status(401).json({ error: "Invalid credentials" });
+    if (!authUser) {
+      const nextCount = (state?.count ?? 0) + 1;
+      const blockedUntil = nextCount >= 5 ? nowTs + 10 * 60 * 1000 : 0;
+      loginAttempts.set(key, { count: blockedUntil ? 0 : nextCount, blockedUntil });
+      return res.status(401).json({ error: "Invalid credentials" });
+    }
+    loginAttempts.delete(key);
     res.json({
       token: authUser.token,
       organizationId: authUser.organizationId,
@@ -92,7 +105,7 @@ app.post("/api/auth/login", async (req, res, next) => {
 });
 
 app.use("/api", async (req, res, next) => {
-  if (req.path === "/health" || req.path === "/auth/login") return next();
+  if (req.path === "/health" || req.path === "/auth/login" || req.path === "/integrations/stripe/webhook") return next();
   const token = req.header("authorization")?.replace(/^Bearer\s+/i, "").trim();
   if (!token) return res.status(401).json({ error: "Missing bearer token" });
   const authUser = await storage.getAuthUser(token);
@@ -101,6 +114,16 @@ app.use("/api", async (req, res, next) => {
   Reflect.set(req, "role", authUser.role);
   Reflect.set(req, "userId", authUser.userId);
   next();
+});
+
+app.post("/api/auth/logout", async (req, res, next) => {
+  try {
+    const token = req.header("authorization")?.replace(/^Bearer\s+/i, "").trim();
+    if (token) await storage.revokeSession(token);
+    res.json({ ok: true });
+  } catch (error) {
+    next(error);
+  }
 });
 
 app.get("/api/organization", async (_req, res, next) => {
