@@ -10,7 +10,7 @@
     "dev:web": "vite --host 0.0.0.0",
     "build": "tsc --noEmit && vite build",
     "preview": "vite preview --host 0.0.0.0",
-    "test": "tsx tests/metrics.test.ts"
+    "test": "tsx tests/metrics.test.ts && tsx tests/security.test.ts"
   },
   "dependencies": {
     "@types/cors": "^2.8.19",

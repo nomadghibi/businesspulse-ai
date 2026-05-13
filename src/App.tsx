@@ -2,7 +2,7 @@ import { AlertTriangle, BarChart3, Bot, Database, FileText, Lightbulb, Loader2, 
 import { useEffect, useMemo, useState } from "react";
 import { Area, AreaChart, Bar, BarChart, CartesianGrid, ResponsiveContainer, Tooltip, XAxis, YAxis } from "recharts";
 import type { AiAnswer, DatasetType, FileUpload, MetricsResponse, Organization, Recommendation, Report } from "../shared/types";
-import { askAi, generateReport, getAlerts, getMetrics, getOrganization, getRecommendations, getReports, getUploads, login, setToken, syncStripe, uploadCsv } from "./api";
+import { askAi, type AppUser, generateReport, getAlerts, getMetrics, getOrganization, getRecommendations, getReports, getUploads, getUsers, inviteUser, login, setToken, syncStripe, updateUserRole, updateUserStatus, uploadCsv } from "./api";
 
 const datasetTypes: Array<{ value: DatasetType; label: string }> = [
   { value: "customers", label: "Customers" },
@@ -32,6 +32,7 @@ export function App() {
   const [error, setError] = useState<string | null>(null);
   const [authed, setAuthed] = useState(Boolean(localStorage.getItem("bp_token")));
   const [syncMessage, setSyncMessage] = useState<string>("");
+  const [users, setUsers] = useState<AppUser[]>([]);
 
   async function refresh() {
     setLoading(true);
@@ -45,12 +46,14 @@ export function App() {
         getRecommendations(),
         getAlerts()
       ]);
+      const usersRes = await getUsers().catch(() => [] as AppUser[]);
       setOrg(orgRes);
       setMetrics(metricsRes);
       setUploads(uploadsRes);
       setReports(reportsRes);
       setRecommendations(recsRes);
       setAlerts(alertsRes);
+      setUsers(usersRes);
     } catch (err) {
       setError(err instanceof Error ? err.message : "Unable to load dashboard");
     } finally {
@@ -113,11 +116,11 @@ export function App() {
         {active === "sources" ? <DataSources uploads={uploads} refresh={refresh} /> : null}
         {active === "reports" ? <Reports reports={reports} start={start} end={end} refresh={refresh} /> : null}
         {active === "recommendations" ? <Recommendations recommendations={recommendations} /> : null}
-        {active === "settings" ? <Settings syncMessage={syncMessage} onSync={async (key) => {
+        {active === "settings" ? <Settings users={users} syncMessage={syncMessage} onSync={async (key) => {
           const result = await syncStripe(key || undefined, 25);
           setSyncMessage(`Synced ${result.syncedCharges} new charges out of ${result.scannedCharges} scanned.`);
           await refresh();
-        }} /> : null}
+        }} onUsersChanged={refresh} /> : null}
       </section>
     </main>
   );
@@ -373,8 +376,11 @@ function Recommendations({ recommendations }: { recommendations: Recommendation[
   );
 }
 
-function Settings({ onSync, syncMessage }: { onSync: (key: string) => Promise<void>; syncMessage: string }) {
+function Settings({ onSync, syncMessage, users, onUsersChanged }: { onSync: (key: string) => Promise<void>; syncMessage: string; users: AppUser[]; onUsersChanged: () => Promise<void> }) {
   const [stripeKey, setStripeKey] = useState("");
+  const [inviteEmail, setInviteEmail] = useState("");
+  const [inviteRole, setInviteRole] = useState<"owner" | "admin" | "viewer">("viewer");
+  const [invitePassword, setInvitePassword] = useState("changeme123");
   const [busy, setBusy] = useState(false);
   return (
     <div className="stack">
@@ -390,6 +396,45 @@ function Settings({ onSync, syncMessage }: { onSync: (key: string) => Promise<vo
             }
           }}>{busy ? "Syncing..." : "Sync Stripe Charges"}</button>
           {syncMessage ? <div className="notice">{syncMessage}</div> : null}
+        </div>
+      </Panel>
+      <Panel title="Users And Roles">
+        <div className="stack">
+          <div className="upload-row">
+            <input value={inviteEmail} onChange={(event) => setInviteEmail(event.target.value)} placeholder="new.user@company.com" />
+            <select value={inviteRole} onChange={(event) => setInviteRole(event.target.value as "owner" | "admin" | "viewer")}>
+              <option value="owner">Owner</option>
+              <option value="admin">Admin</option>
+              <option value="viewer">Viewer</option>
+            </select>
+            <input value={invitePassword} onChange={(event) => setInvitePassword(event.target.value)} placeholder="temporary password" />
+            <button className="primary" onClick={async () => {
+              await inviteUser(inviteEmail, inviteRole, invitePassword);
+              setInviteEmail("");
+              await onUsersChanged();
+            }}>Invite</button>
+          </div>
+          <div className="table">
+            <div className="table-head"><span>Email</span><span>Role</span><span>Status</span><span>Action</span></div>
+            {users.map((user) => (
+              <div className="table-row" key={user.userId}>
+                <span>{user.email}</span>
+                <select value={user.role} onChange={async (event) => {
+                  await updateUserRole(user.userId, event.target.value as "owner" | "admin" | "viewer");
+                  await onUsersChanged();
+                }}>
+                  <option value="owner">Owner</option>
+                  <option value="admin">Admin</option>
+                  <option value="viewer">Viewer</option>
+                </select>
+                <span>{user.disabled ? "disabled" : "active"}</span>
+                <button onClick={async () => {
+                  await updateUserStatus(user.userId, !user.disabled);
+                  await onUsersChanged();
+                }}>{user.disabled ? "Enable" : "Disable"}</button>
+              </div>
+            ))}
+          </div>
         </div>
       </Panel>
     </div>

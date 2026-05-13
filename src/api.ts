@@ -78,3 +78,35 @@ export function syncStripe(secretKey?: string, limit = 25) {
     body: JSON.stringify({ secretKey, limit })
   });
 }
+
+export interface AppUser {
+  userId: string;
+  email: string;
+  role: "owner" | "admin" | "viewer";
+  disabled: boolean;
+}
+
+export function getUsers() {
+  return request<AppUser[]>("/users");
+}
+
+export function inviteUser(email: string, role: "owner" | "admin" | "viewer", password?: string) {
+  return request<{ userId: string; email: string; role: string }>("/users/invite", {
+    method: "POST",
+    body: JSON.stringify({ email, role, password })
+  });
+}
+
+export function updateUserRole(userId: string, role: "owner" | "admin" | "viewer") {
+  return request<{ ok: true }>(`/users/${userId}/role`, {
+    method: "PATCH",
+    body: JSON.stringify({ role })
+  });
+}
+
+export function updateUserStatus(userId: string, disabled: boolean) {
+  return request<{ ok: true }>(`/users/${userId}/status`, {
+    method: "PATCH",
+    body: JSON.stringify({ disabled })
+  });
+}

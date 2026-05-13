@@ -1,4 +1,5 @@
 import "dotenv/config";
+import crypto from "node:crypto";
 import cors from "cors";
 import express from "express";
 import multer from "multer";
@@ -15,6 +16,59 @@ const port = Number(process.env.PORT ?? 5055);
 const storage = getStorage();
 
 app.use(cors());
+app.post("/api/integrations/stripe/webhook", express.raw({ type: "application/json" }), async (req, res, next) => {
+  try {
+    const signature = String(req.header("stripe-signature") ?? "");
+    const secret = process.env.STRIPE_WEBHOOK_SECRET;
+    if (!secret) return res.status(400).json({ error: "Missing STRIPE_WEBHOOK_SECRET" });
+    const raw = Buffer.isBuffer(req.body) ? req.body : Buffer.from("");
+    const expected = crypto.createHmac("sha256", secret).update(raw).digest("hex");
+    const provided = signature.split(",").find((part) => part.startsWith("v1="))?.slice(3) ?? "";
+    if (!provided || !crypto.timingSafeEqual(Buffer.from(expected), Buffer.from(provided))) {
+      return res.status(400).json({ error: "Invalid webhook signature" });
+    }
+    const event = JSON.parse(raw.toString("utf8")) as { type: string; data?: { object?: any } };
+    const object = event.data?.object;
+    if (!object?.metadata?.organization_id) return res.status(200).json({ received: true, ignored: "missing organization_id metadata" });
+    const organizationId = String(object.metadata.organization_id);
+    const data = await storage.getOrgData(organizationId);
+    const createdAt = new Date().toISOString();
+    if (event.type === "payment_intent.succeeded" || event.type === "charge.succeeded") {
+      const externalId = object.latest_charge || object.id;
+      if (!data.revenue.some((row) => row.externalId === externalId)) {
+        data.revenue.push({
+          id: `rev_${crypto.randomUUID()}`,
+          organizationId,
+          externalId,
+          amount: Number(object.amount_received ?? object.amount ?? 0) / 100,
+          paymentMethod: object.payment_method_types?.[0] ?? "stripe",
+          paidAt: new Date((object.created ?? Date.now() / 1000) * 1000).toISOString(),
+          createdAt,
+          updatedAt: createdAt
+        });
+      }
+    }
+    if (event.type === "charge.refunded") {
+      const refundExternalId = `refund_${object.id}`;
+      if (!data.revenue.some((row) => row.externalId === refundExternalId)) {
+        data.revenue.push({
+          id: `rev_${crypto.randomUUID()}`,
+          organizationId,
+          externalId: refundExternalId,
+          amount: -Math.abs(Number(object.amount_refunded ?? object.amount ?? 0) / 100),
+          paymentMethod: "stripe_refund",
+          paidAt: new Date((object.created ?? Date.now() / 1000) * 1000).toISOString(),
+          createdAt,
+          updatedAt: createdAt
+        });
+      }
+    }
+    await storage.saveOrgData(organizationId, data);
+    res.json({ received: true });
+  } catch (error) {
+    next(error);
+  }
+});
 app.use(express.json({ limit: "1mb" }));
 
 app.get("/api/health", (_req, res) => {
@@ -53,6 +107,53 @@ app.get("/api/organization", async (_req, res, next) => {
   try {
     const organizations = await storage.getOrganizations();
     res.json(organizations[0]);
+  } catch (error) {
+    next(error);
+  }
+});
+
+app.get("/api/users", async (req, res, next) => {
+  try {
+    requireRole(req, res, ["owner", "admin"]);
+    const users = await storage.listUsers(org(req));
+    res.json(users);
+  } catch (error) {
+    next(error);
+  }
+});
+
+app.post("/api/users/invite", async (req, res, next) => {
+  try {
+    requireRole(req, res, ["owner"]);
+    const body = z.object({
+      email: z.string().email(),
+      role: z.enum(["owner", "admin", "viewer"]),
+      password: z.string().min(8).optional()
+    }).parse(req.body);
+    const user = await storage.inviteUser(org(req), body.email, body.role, body.password ?? "changeme123");
+    res.json(user);
+  } catch (error) {
+    next(error);
+  }
+});
+
+app.patch("/api/users/:userId/role", async (req, res, next) => {
+  try {
+    requireRole(req, res, ["owner"]);
+    const body = z.object({ role: z.enum(["owner", "admin", "viewer"]) }).parse(req.body);
+    await storage.setUserRole(org(req), req.params.userId, body.role);
+    res.json({ ok: true });
+  } catch (error) {
+    next(error);
+  }
+});
+
+app.patch("/api/users/:userId/status", async (req, res, next) => {
+  try {
+    requireRole(req, res, ["owner"]);
+    const body = z.object({ disabled: z.boolean() }).parse(req.body);
+    await storage.setUserDisabled(org(req), req.params.userId, body.disabled);
+    res.json({ ok: true });
   } catch (error) {
     next(error);
   }
