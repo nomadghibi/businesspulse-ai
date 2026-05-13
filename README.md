@@ -28,6 +28,7 @@ postgresql://localhost:5432/businesspulse_ai
 
 - Login endpoint: `POST /api/auth/login`
 - Protected endpoints require `Authorization: Bearer <token>`
+- Logout endpoint: `POST /api/auth/logout`
 - Roles enforced server-side:
   - `owner` and `admin`: write actions (upload, report generation, integration sync)
   - `viewer`: read-only dashboards and Ask AI
@@ -45,6 +46,8 @@ Default local demo login:
 - Credential source: `STRIPE_SECRET_KEY` from server environment only
 - Webhook endpoint: `POST /api/integrations/stripe/webhook`
 - Webhook events handled: `payment_intent.succeeded`, `charge.succeeded`, `charge.refunded`
+- Billing checkout scaffold endpoint: `POST /api/billing/checkout`
+- Billing activation endpoint: `POST /api/billing/activate`
 
 ### Stripe Webhook Local Test
 
@@ -66,6 +69,27 @@ curl -X POST http://localhost:5055/api/integrations/stripe/webhook \
 ```bash
 npm run build
 npm test
+```
+
+## Conversion And Analytics
+
+- Trial capture endpoint: `POST /api/public/trial-start`
+- Demo request endpoint: `POST /api/public/demo-request`
+- Public analytics endpoint: `POST /api/public/track`
+- Authenticated analytics endpoint: `POST /api/analytics/track`
+
+## Production Deployment
+
+The app includes:
+
+- `Dockerfile` for containerized deployment
+- `.dockerignore`
+- runtime env validation for production startup (`DATABASE_URL`, `APP_BASE_URL`)
+
+Production start command:
+
+```bash
+npm run start
 ```
 
 ## MVP Scope

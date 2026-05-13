@@ -2,7 +2,7 @@ import { AlertTriangle, ArrowRight, BarChart3, Bot, CheckCircle2, Database, File
 import { useEffect, useMemo, useState } from "react";
 import { Area, AreaChart, Bar, BarChart, CartesianGrid, ResponsiveContainer, Tooltip, XAxis, YAxis } from "recharts";
 import type { AiAnswer, DatasetType, FileUpload, MetricsResponse, Organization, Recommendation, Report } from "../shared/types";
-import { askAi, clearToken, type AppUser, generateReport, getAlerts, getMetrics, getOrganization, getRecommendations, getReports, getUploads, getUsers, inviteUser, login, logout, setToken, syncStripe, updateUserRole, updateUserStatus, uploadCsv } from "./api";
+import { askAi, clearToken, createCheckout, type AppUser, generateReport, getAlerts, getMetrics, getOrganization, getRecommendations, getReports, getUploads, getUsers, inviteUser, login, logout, requestDemo, setToken, startTrial, syncStripe, trackEvent, trackPublicEvent, updateUserRole, updateUserStatus, uploadCsv } from "./api";
 
 const datasetTypes: Array<{ value: DatasetType; label: string }> = [
   { value: "customers", label: "Customers" },
@@ -169,6 +169,13 @@ function LoginGate({ onAuthed }: { onAuthed: () => void }) {
 }
 
 function LandingPage({ onEnterApp }: { onEnterApp: () => void }) {
+  const [trialEmail, setTrialEmail] = useState("");
+  const [trialCompany, setTrialCompany] = useState("");
+  const [trialMessage, setTrialMessage] = useState("");
+  const [demoName, setDemoName] = useState("");
+  const [demoEmail, setDemoEmail] = useState("");
+  const [demoCompany, setDemoCompany] = useState("");
+  const [demoMessage, setDemoMessage] = useState("");
   return (
     <main className="landing-shell">
       <section className="hero">
@@ -177,15 +184,19 @@ function LandingPage({ onEnterApp }: { onEnterApp: () => void }) {
             <div className="mark">BP</div>
             <strong>BusinessPulse AI</strong>
           </div>
-          <button className="primary" onClick={onEnterApp}>Enter App <ArrowRight size={16} /></button>
+          <button className="primary" onClick={async () => { await trackPublicEvent("landing_enter_app_click"); onEnterApp(); }}>Enter App <ArrowRight size={16} /></button>
         </header>
         <div className="hero-content">
           <p className="badge">AI Business Analyst For Home Services</p>
           <h1>Know what changed in revenue, leads, and jobs before it costs you this week.</h1>
           <p className="hero-copy">BusinessPulse turns your service data into executive clarity with grounded answers, anomaly alerts, and actions your team can ship immediately.</p>
           <div className="hero-actions">
-            <button className="primary" onClick={onEnterApp}>Start Free Trial <ArrowRight size={16} /></button>
-            <button onClick={onEnterApp}>Book Demo</button>
+            <button className="primary" onClick={async () => { await trackPublicEvent("landing_start_trial_click"); }}>
+              Start Free Trial <ArrowRight size={16} />
+            </button>
+            <button onClick={async () => { await trackPublicEvent("landing_book_demo_click"); }}>
+              Book Demo
+            </button>
           </div>
         </div>
       </section>
@@ -241,6 +252,38 @@ function LandingPage({ onEnterApp }: { onEnterApp: () => void }) {
           </article>
         </div>
         <button className="primary" onClick={onEnterApp}>Launch BusinessPulse <ArrowRight size={16} /></button>
+      </section>
+
+      <section className="landing-band">
+        <h2>Start Your Trial</h2>
+        <div className="signup-row">
+          <input value={trialEmail} onChange={(event) => setTrialEmail(event.target.value)} placeholder="Work email" />
+          <input value={trialCompany} onChange={(event) => setTrialCompany(event.target.value)} placeholder="Company name" />
+          <button className="primary" onClick={async () => {
+            await startTrial(trialEmail, trialCompany);
+            setTrialMessage("Trial request received. We will activate your workspace shortly.");
+            await trackPublicEvent("trial_form_submitted", { email: trialEmail });
+            setTrialEmail("");
+          }}>Start Trial</button>
+        </div>
+        {trialMessage ? <p>{trialMessage}</p> : null}
+      </section>
+
+      <section className="landing-band">
+        <h2>Book A Demo</h2>
+        <div className="signup-row">
+          <input value={demoName} onChange={(event) => setDemoName(event.target.value)} placeholder="Your name" />
+          <input value={demoEmail} onChange={(event) => setDemoEmail(event.target.value)} placeholder="Work email" />
+          <input value={demoCompany} onChange={(event) => setDemoCompany(event.target.value)} placeholder="Company" />
+          <button onClick={async () => {
+            await requestDemo(demoName, demoEmail, demoCompany, "Requested from landing page");
+            setDemoMessage("Demo request submitted. We will contact you within one business day.");
+            await trackPublicEvent("demo_form_submitted", { email: demoEmail });
+            setDemoName("");
+            setDemoEmail("");
+          }}>Request Demo</button>
+        </div>
+        {demoMessage ? <p>{demoMessage}</p> : null}
       </section>
     </main>
   );
@@ -467,6 +510,7 @@ function Settings({ onSync, syncMessage, users, onUsersChanged }: { onSync: () =
   const [inviteRole, setInviteRole] = useState<"owner" | "admin" | "viewer">("viewer");
   const [invitePassword, setInvitePassword] = useState("changeme123");
   const [busy, setBusy] = useState(false);
+  const [billingMsg, setBillingMsg] = useState("");
   return (
     <div className="stack">
       <Panel title="Stripe Integration">
@@ -521,6 +565,26 @@ function Settings({ onSync, syncMessage, users, onUsersChanged }: { onSync: () =
             ))}
           </div>
         </div>
+      </Panel>
+      <Panel title="Billing">
+        <div className="upload-row">
+          <button className="primary" onClick={async () => {
+            const checkout = await createCheckout("starter");
+            if (checkout.url) window.location.href = checkout.url;
+            setBillingMsg("Starter checkout session created.");
+          }}>Checkout Starter</button>
+          <button onClick={async () => {
+            const checkout = await createCheckout("growth");
+            if (checkout.url) window.location.href = checkout.url;
+            setBillingMsg("Growth checkout session created.");
+          }}>Checkout Growth</button>
+          <button onClick={async () => {
+            const checkout = await createCheckout("pro");
+            if (checkout.url) window.location.href = checkout.url;
+            setBillingMsg("Pro checkout session created.");
+          }}>Checkout Pro</button>
+        </div>
+        {billingMsg ? <p>{billingMsg}</p> : null}
       </Panel>
     </div>
   );

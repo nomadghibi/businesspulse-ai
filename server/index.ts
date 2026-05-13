@@ -6,6 +6,7 @@ import multer from "multer";
 import { z } from "zod";
 import { answerQuestion } from "./ai";
 import { ingestCsv } from "./csv";
+import { validateRuntimeEnv } from "./env";
 import { calculateMetrics, generateAlerts, generateRecommendations, generateReport } from "./metrics";
 import { type AuthRole, getStorage } from "./storage";
 import { defaultPeriod } from "./utils";
@@ -15,6 +16,9 @@ const upload = multer({ storage: multer.memoryStorage(), limits: { fileSize: 5 *
 const port = Number(process.env.PORT ?? 5055);
 const storage = getStorage();
 const loginAttempts = new Map<string, { count: number; blockedUntil: number }>();
+const billableWriteEndpoints = new Set(["/upload", "/reports", "/integrations/stripe/sync"]);
+
+validateRuntimeEnv();
 
 app.use(cors());
 app.post("/api/integrations/stripe/webhook", express.raw({ type: "application/json" }), async (req, res, next) => {
@@ -93,9 +97,15 @@ app.post("/api/auth/login", async (req, res, next) => {
       const nextCount = (state?.count ?? 0) + 1;
       const blockedUntil = nextCount >= 5 ? nowTs + 10 * 60 * 1000 : 0;
       loginAttempts.set(key, { count: blockedUntil ? 0 : nextCount, blockedUntil });
+      await storage.trackEvent({ eventName: "login_failure", payload: { email: body.email } });
       return res.status(401).json({ error: "Invalid credentials" });
     }
     loginAttempts.delete(key);
+    await storage.trackEvent({
+      organizationId: authUser.organizationId,
+      eventName: "login_success",
+      payload: { email: authUser.email, role: authUser.role }
+    });
     res.json({
       token: authUser.token,
       organizationId: authUser.organizationId,
@@ -107,15 +117,66 @@ app.post("/api/auth/login", async (req, res, next) => {
   }
 });
 
+app.post("/api/public/trial-start", async (req, res, next) => {
+  try {
+    const body = z.object({
+      email: z.string().email(),
+      company: z.string().optional(),
+      phone: z.string().optional(),
+      source: z.string().default("landing")
+    }).parse(req.body ?? {});
+    await storage.createPublicLead(body);
+    await storage.trackEvent({ eventName: "trial_start", payload: body });
+    res.json({ ok: true });
+  } catch (error) {
+    next(error);
+  }
+});
+
+app.post("/api/public/demo-request", async (req, res, next) => {
+  try {
+    const body = z.object({
+      name: z.string().min(2),
+      email: z.string().email(),
+      company: z.string().optional(),
+      message: z.string().optional()
+    }).parse(req.body ?? {});
+    await storage.createDemoRequest(body);
+    await storage.trackEvent({ eventName: "demo_request", payload: body });
+    res.json({ ok: true });
+  } catch (error) {
+    next(error);
+  }
+});
+
+app.post("/api/public/track", async (req, res, next) => {
+  try {
+    const body = z.object({
+      eventName: z.string().min(2),
+      payload: z.record(z.string(), z.any()).default({})
+    }).parse(req.body ?? {});
+    await storage.trackEvent({ eventName: body.eventName, payload: body.payload });
+    res.json({ ok: true });
+  } catch (error) {
+    next(error);
+  }
+});
+
 app.use("/api", async (req, res, next) => {
-  if (req.path === "/health" || req.path === "/auth/login" || req.path === "/integrations/stripe/webhook") return next();
+  if (req.path === "/health" || req.path === "/auth/login" || req.path === "/integrations/stripe/webhook" || req.path.startsWith("/public/")) return next();
   const token = req.header("authorization")?.replace(/^Bearer\s+/i, "").trim();
   if (!token) return res.status(401).json({ error: "Missing bearer token" });
   const authUser = await storage.getAuthUser(token);
   if (!authUser) return res.status(401).json({ error: "Invalid or expired session" });
+  const plan = await storage.getOrganizationPlan(authUser.organizationId);
+  if (billableWriteEndpoints.has(req.path) && plan.status !== "active" && plan.status !== "trialing") {
+    return res.status(402).json({ error: "Subscription inactive. Complete billing to continue." });
+  }
   Reflect.set(req, "organizationId", authUser.organizationId);
   Reflect.set(req, "role", authUser.role);
   Reflect.set(req, "userId", authUser.userId);
+  Reflect.set(req, "plan", plan.plan);
+  Reflect.set(req, "planStatus", plan.status);
   next();
 });
 
@@ -129,10 +190,79 @@ app.post("/api/auth/logout", async (req, res, next) => {
   }
 });
 
+app.post("/api/analytics/track", async (req, res, next) => {
+  try {
+    const body = z.object({
+      eventName: z.string().min(2),
+      payload: z.record(z.string(), z.any()).default({})
+    }).parse(req.body ?? {});
+    await storage.trackEvent({ organizationId: org(req), eventName: body.eventName, payload: body.payload });
+    res.json({ ok: true });
+  } catch (error) {
+    next(error);
+  }
+});
+
 app.get("/api/organization", async (_req, res, next) => {
   try {
     const organizations = await storage.getOrganizations();
-    res.json(organizations[0]);
+    const organizationId = organizations[0].id;
+    const plan = await storage.getOrganizationPlan(organizationId);
+    res.json({ ...organizations[0], subscriptionPlan: plan.plan, subscriptionStatus: plan.status });
+  } catch (error) {
+    next(error);
+  }
+});
+
+app.post("/api/billing/checkout", async (req, res, next) => {
+  try {
+    requireRole(req, res, ["owner", "admin"]);
+    const body = z.object({ plan: z.enum(["starter", "growth", "pro"]) }).parse(req.body ?? {});
+    const organizationId = org(req);
+    const stripeKey = process.env.STRIPE_SECRET_KEY;
+    const appUrl = process.env.APP_BASE_URL || "http://localhost:5173";
+    if (!stripeKey) throw Object.assign(new Error("Missing STRIPE_SECRET_KEY"), { status: 400 });
+    const params = new URLSearchParams();
+    params.set("mode", "subscription");
+    params.set("success_url", `${appUrl}?checkout=success`);
+    params.set("cancel_url", `${appUrl}?checkout=cancel`);
+    params.set("metadata[organization_id]", organizationId);
+    params.set("metadata[plan]", body.plan);
+    const priceKey = `STRIPE_PRICE_${body.plan.toUpperCase()}`;
+    const priceId = process.env[priceKey];
+    if (priceId) {
+      params.set("line_items[0][price]", priceId);
+      params.set("line_items[0][quantity]", "1");
+    } else {
+      params.set("line_items[0][price_data][currency]", "usd");
+      params.set("line_items[0][price_data][recurring][interval]", "month");
+      params.set("line_items[0][price_data][product_data][name]", `BusinessPulse ${body.plan}`);
+      params.set("line_items[0][price_data][unit_amount]", body.plan === "starter" ? "29900" : body.plan === "growth" ? "79900" : "149900");
+      params.set("line_items[0][quantity]", "1");
+    }
+    const response = await fetch("https://api.stripe.com/v1/checkout/sessions", {
+      method: "POST",
+      headers: {
+        Authorization: `Bearer ${stripeKey}`,
+        "Content-Type": "application/x-www-form-urlencoded"
+      },
+      body: params.toString()
+    });
+    if (!response.ok) throw Object.assign(new Error(`Stripe checkout error: ${response.status}`), { status: 502 });
+    const session = (await response.json()) as { id: string; url: string | null };
+    await storage.trackEvent({ organizationId, eventName: "billing_checkout_created", payload: { plan: body.plan, sessionId: session.id } });
+    res.json({ url: session.url, sessionId: session.id });
+  } catch (error) {
+    next(error);
+  }
+});
+
+app.post("/api/billing/activate", async (req, res, next) => {
+  try {
+    requireRole(req, res, ["owner", "admin"]);
+    const body = z.object({ plan: z.enum(["starter", "growth", "pro"]), status: z.enum(["active", "trialing", "past_due", "canceled"]) }).parse(req.body ?? {});
+    await storage.upsertOrganizationPlan(org(req), body.plan, body.status);
+    res.json({ ok: true });
   } catch (error) {
     next(error);
   }

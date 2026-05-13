@@ -29,6 +29,11 @@ export interface Storage {
   inviteUser(organizationId: string, email: string, role: AuthRole, password: string): Promise<{ userId: string; email: string; role: AuthRole }>;
   setUserRole(organizationId: string, userId: string, role: AuthRole): Promise<void>;
   setUserDisabled(organizationId: string, userId: string, disabled: boolean): Promise<void>;
+  createPublicLead(input: { email: string; company?: string; phone?: string; source: string }): Promise<void>;
+  createDemoRequest(input: { name: string; email: string; company?: string; message?: string }): Promise<void>;
+  trackEvent(input: { organizationId?: string; eventName: string; payload: Record<string, unknown> }): Promise<void>;
+  getOrganizationPlan(organizationId: string): Promise<{ plan: string; status: string }>;
+  upsertOrganizationPlan(organizationId: string, plan: string, status: string): Promise<void>;
 }
 
 class MemoryStorage implements Storage {
@@ -36,6 +41,10 @@ class MemoryStorage implements Storage {
   private users = new Map<string, { userId: string; organizationId: string; email: string; role: AuthRole; disabled: boolean; passwordHash: string }>([
     ["user_demo_owner", { userId: "user_demo_owner", organizationId: DEMO_ORG_ID, email: "owner@businesspulse.local", role: "owner", disabled: false, passwordHash: hashPassword("demo1234") }]
   ]);
+  private publicLeads: Array<{ id: string; email: string; company?: string; phone?: string; source: string }> = [];
+  private demoRequests: Array<{ id: string; name: string; email: string; company?: string; message?: string }> = [];
+  private events: Array<{ id: string; organizationId?: string; eventName: string; payload: Record<string, unknown> }> = [];
+  private plans = new Map<string, { plan: string; status: string }>([[DEMO_ORG_ID, { plan: "starter", status: "trialing" }]]);
   async initialize() {}
   async getOrganizations() {
     return organizations;
@@ -101,6 +110,21 @@ class MemoryStorage implements Storage {
     user.disabled = disabled;
     this.users.set(userId, user);
   }
+  async createPublicLead(input: { email: string; company?: string; phone?: string; source: string }) {
+    this.publicLeads.push({ id: `lead_${crypto.randomUUID()}`, ...input });
+  }
+  async createDemoRequest(input: { name: string; email: string; company?: string; message?: string }) {
+    this.demoRequests.push({ id: `demo_${crypto.randomUUID()}`, ...input });
+  }
+  async trackEvent(input: { organizationId?: string; eventName: string; payload: Record<string, unknown> }) {
+    this.events.push({ id: `evt_${crypto.randomUUID()}`, ...input });
+  }
+  async getOrganizationPlan(organizationId: string) {
+    return this.plans.get(organizationId) ?? { plan: "starter", status: "trialing" };
+  }
+  async upsertOrganizationPlan(organizationId: string, plan: string, status: string) {
+    this.plans.set(organizationId, { plan, status });
+  }
 }
 
 class PostgresStorage implements Storage {
@@ -112,6 +136,7 @@ class PostgresStorage implements Storage {
   async initialize() {
     await this.applyMigration("001_normalized_schema", resolve(process.cwd(), "server/migrations/001_normalized_schema.sql"));
     await this.applyMigration("002_users_relational_and_indexes", resolve(process.cwd(), "server/migrations/002_users_relational_and_indexes.sql"));
+    await this.applyMigration("003_conversion_analytics_billing", resolve(process.cwd(), "server/migrations/003_conversion_analytics_billing.sql"));
 
     const org = organizations[0];
     const existing = await this.pool.query("select id from organizations where id = $1", [DEMO_ORG_ID]);
@@ -291,6 +316,45 @@ class PostgresStorage implements Storage {
       [organizationId, userId, disabled]
     );
     if (!result.rowCount) throw Object.assign(new Error("User not found"), { status: 404 });
+  }
+  async createPublicLead(input: { email: string; company?: string; phone?: string; source: string }) {
+    await this.pool.query(
+      `insert into public_leads (id, email, company, phone, source) values ($1,$2,$3,$4,$5)`,
+      [`lead_${crypto.randomUUID()}`, input.email, input.company ?? null, input.phone ?? null, input.source]
+    );
+  }
+  async createDemoRequest(input: { name: string; email: string; company?: string; message?: string }) {
+    await this.pool.query(
+      `insert into demo_requests (id, name, email, company, message) values ($1,$2,$3,$4,$5)`,
+      [`demo_${crypto.randomUUID()}`, input.name, input.email, input.company ?? null, input.message ?? null]
+    );
+  }
+  async trackEvent(input: { organizationId?: string; eventName: string; payload: Record<string, unknown> }) {
+    await this.pool.query(
+      `insert into analytics_events (id, organization_id, event_name, payload) values ($1,$2,$3,$4::jsonb)`,
+      [`evt_${crypto.randomUUID()}`, input.organizationId ?? null, input.eventName, JSON.stringify(input.payload)]
+    );
+  }
+  async getOrganizationPlan(organizationId: string) {
+    const { rows } = await this.pool.query<{ subscription_plan: string; subscription_status: string }>(
+      "select subscription_plan, subscription_status from organizations where id = $1",
+      [organizationId]
+    );
+    const row = rows[0];
+    if (!row) throw Object.assign(new Error("Organization not found"), { status: 404 });
+    return { plan: row.subscription_plan, status: row.subscription_status };
+  }
+  async upsertOrganizationPlan(organizationId: string, plan: string, status: string) {
+    await this.pool.query(
+      "update organizations set subscription_plan = $2, subscription_status = $3, updated_at = now() where id = $1",
+      [organizationId, plan, status]
+    );
+    await this.pool.query(
+      `insert into billing_subscriptions (id, organization_id, plan, status, updated_at)
+       values ($1,$2,$3,$4,now())
+       on conflict (id) do update set plan = excluded.plan, status = excluded.status, updated_at = now()`,
+      [`sub_${organizationId}`, organizationId, plan, status]
+    );
   }
 
   private async selectPayloads(table: string, organizationId: string) {

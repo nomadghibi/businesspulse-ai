@@ -117,3 +117,38 @@ export function updateUserStatus(userId: string, disabled: boolean) {
     body: JSON.stringify({ disabled })
   });
 }
+
+export function trackEvent(eventName: string, payload: Record<string, unknown> = {}) {
+  return request<{ ok: true }>("/analytics/track", {
+    method: "POST",
+    body: JSON.stringify({ eventName, payload })
+  });
+}
+
+export function trackPublicEvent(eventName: string, payload: Record<string, unknown> = {}) {
+  return request<{ ok: true }>("/public/track", {
+    method: "POST",
+    body: JSON.stringify({ eventName, payload })
+  });
+}
+
+export function startTrial(email: string, company?: string, phone?: string) {
+  return request<{ ok: true }>("/public/trial-start", {
+    method: "POST",
+    body: JSON.stringify({ email, company, phone, source: "landing" })
+  });
+}
+
+export function requestDemo(name: string, email: string, company?: string, message?: string) {
+  return request<{ ok: true }>("/public/demo-request", {
+    method: "POST",
+    body: JSON.stringify({ name, email, company, message })
+  });
+}
+
+export function createCheckout(plan: "starter" | "growth" | "pro") {
+  return request<{ url: string | null; sessionId: string }>("/billing/checkout", {
+    method: "POST",
+    body: JSON.stringify({ plan })
+  });
+}
