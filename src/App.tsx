@@ -261,6 +261,8 @@ export function App() {
       if (key === "a") setActive("ask");
       if (key === "s") setActive("sources");
       if (key === "r") setActive("recommendations");
+      if (key === "p") setActive("reports");
+      if (key === "t") setActive("settings");
     };
     window.addEventListener("keydown", onKeyDown);
     return () => {
@@ -354,7 +356,7 @@ export function App() {
           ))}
         </nav>
         <button className="shortcut-btn" onClick={() => setShowShortcuts(true)}>Shortcuts</button>
-        <p className="sidebar-hint">Shortcuts: g then d/a/s/r, [ ] shift, 1-4 presets</p>
+        <p className="sidebar-hint">Shortcuts: g then d/a/s/r/p/t, [ ] shift, 1-4 presets</p>
       </aside>
 
       <section className="workspace">
@@ -435,6 +437,8 @@ export function App() {
               <li><code>g</code> then <code>a</code>: Ask AI</li>
               <li><code>g</code> then <code>s</code>: Data Sources</li>
               <li><code>g</code> then <code>r</code>: Recommendations</li>
+              <li><code>g</code> then <code>p</code>: Reports</li>
+              <li><code>g</code> then <code>t</code>: Settings</li>
               <li><code>[</code> and <code>]</code>: Shift date window</li>
               <li><code>1</code>/<code>2</code>/<code>3</code>/<code>4</code>: 7d/30d/90d/12m presets</li>
               <li><code>?</code>: Toggle this help</li>
@@ -448,6 +452,8 @@ export function App() {
                   "g then a: Ask AI",
                   "g then s: Data Sources",
                   "g then r: Recommendations",
+                  "g then p: Reports",
+                  "g then t: Settings",
                   "[ and ]: Shift date window",
                   "1/2/3/4: 7d/30d/90d/12m presets",
                   "?: Toggle shortcuts help",
