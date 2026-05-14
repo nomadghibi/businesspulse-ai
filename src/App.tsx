@@ -1038,14 +1038,39 @@ function Reports({ reports, start, end, refresh }: { reports: Report[]; start: s
 }
 
 function Recommendations({ recommendations }: { recommendations: Recommendation[] }) {
-  const [priorityFilter, setPriorityFilter] = useState<"all" | "high" | "medium" | "low">("all");
-  const [query, setQuery] = useState("");
+  const [priorityFilter, setPriorityFilter] = useState<"all" | "high" | "medium" | "low">(
+    () => (localStorage.getItem("bp_recommendations_priority") as "all" | "high" | "medium" | "low") ?? "all"
+  );
+  const [query, setQuery] = useState(() => localStorage.getItem("bp_recommendations_query") ?? "");
   const filtered = recommendations.filter((rec) => {
     const byPriority = priorityFilter === "all" || rec.priority === priorityFilter;
     const q = query.trim().toLowerCase();
     const byQuery = !q || rec.title.toLowerCase().includes(q) || rec.description.toLowerCase().includes(q) || rec.expectedImpact.toLowerCase().includes(q);
     return byPriority && byQuery;
   });
+
+  useEffect(() => {
+    localStorage.setItem("bp_recommendations_priority", priorityFilter);
+    localStorage.setItem("bp_recommendations_query", query);
+  }, [priorityFilter, query]);
+
+  function exportRecommendationsCsv() {
+    const lines = [
+      "id,title,priority,description,expected_impact",
+      ...filtered.map((rec) =>
+        [rec.id, escapeCsv(rec.title), rec.priority, escapeCsv(rec.description), escapeCsv(rec.expectedImpact)].join(",")
+      )
+    ];
+    const blob = new Blob([lines.join("\n")], { type: "text/csv;charset=utf-8" });
+    const url = URL.createObjectURL(blob);
+    const anchor = document.createElement("a");
+    anchor.href = url;
+    anchor.download = `recommendations-${new Date().toISOString().slice(0, 10)}.csv`;
+    document.body.appendChild(anchor);
+    anchor.click();
+    anchor.remove();
+    URL.revokeObjectURL(url);
+  }
 
   return (
     <Panel title="Prioritized Actions">
@@ -1057,6 +1082,7 @@ function Recommendations({ recommendations }: { recommendations: Recommendation[
           <option value="low">Low</option>
         </select>
         <input value={query} onChange={(event) => setQuery(event.target.value)} placeholder="Search recommendations" />
+        <button onClick={exportRecommendationsCsv} disabled={!filtered.length}>Export CSV</button>
         <span>{filtered.length} of {recommendations.length} shown</span>
       </div>
       <div className="list">
