@@ -821,6 +821,12 @@ function DataSources({
     localStorage.setItem("bp_upload_history_sort", historySort);
   }, [historyDatasetFilter, historyStatusFilter, historySort]);
 
+  function clearHistoryFilters() {
+    setHistoryDatasetFilter("all");
+    setHistoryStatusFilter("all");
+    setHistorySort("newest");
+  }
+
   async function onFile(file: File | null) {
     if (!file) return;
     setBusy(true);
@@ -963,6 +969,7 @@ function DataSources({
             <option value="rows_desc">Rows high to low</option>
             <option value="rows_asc">Rows low to high</option>
           </select>
+          <button onClick={clearHistoryFilters}>Clear Filters</button>
           <button onClick={exportHistoryCsv} disabled={!sortedUploads.length}>Export CSV</button>
           <span>{filteredUploads.length} of {uploads.length} shown</span>
         </div>
@@ -1004,6 +1011,11 @@ function Reports({ reports, start, end, refresh }: { reports: Report[]; start: s
     localStorage.setItem("bp_reports_query", query);
     localStorage.setItem("bp_reports_sort", sort);
   }, [query, sort]);
+
+  function clearReportFilters() {
+    setQuery("");
+    setSort("newest");
+  }
   async function create() {
     setBusy(true);
     try {
@@ -1022,6 +1034,7 @@ function Reports({ reports, start, end, refresh }: { reports: Report[]; start: s
           <option value="newest">Newest first</option>
           <option value="oldest">Oldest first</option>
         </select>
+        <button onClick={clearReportFilters}>Clear Filters</button>
         <span>{sorted.length} of {reports.length} shown</span>
       </div>
       {sorted.map((report) => (
@@ -1054,6 +1067,11 @@ function Recommendations({ recommendations }: { recommendations: Recommendation[
     localStorage.setItem("bp_recommendations_query", query);
   }, [priorityFilter, query]);
 
+  function clearRecommendationFilters() {
+    setPriorityFilter("all");
+    setQuery("");
+  }
+
   function exportRecommendationsCsv() {
     const lines = [
       "id,title,priority,description,expected_impact",
@@ -1082,6 +1100,7 @@ function Recommendations({ recommendations }: { recommendations: Recommendation[
           <option value="low">Low</option>
         </select>
         <input value={query} onChange={(event) => setQuery(event.target.value)} placeholder="Search recommendations" />
+        <button onClick={clearRecommendationFilters}>Clear Filters</button>
         <button onClick={exportRecommendationsCsv} disabled={!filtered.length}>Export CSV</button>
         <span>{filtered.length} of {recommendations.length} shown</span>
       </div>
@@ -1118,6 +1137,11 @@ function Settings({ onSync, syncMessage, users, onUsersChanged }: { onSync: () =
     localStorage.setItem("bp_users_query", userQuery);
     localStorage.setItem("bp_users_status_filter", statusFilter);
   }, [userQuery, statusFilter]);
+
+  function clearUserFilters() {
+    setUserQuery("");
+    setStatusFilter("all");
+  }
 
   function resetLocalPreferences() {
     const keys = [
@@ -1176,6 +1200,7 @@ function Settings({ onSync, syncMessage, users, onUsersChanged }: { onSync: () =
               <option value="active">Active only</option>
               <option value="disabled">Disabled only</option>
             </select>
+            <button onClick={clearUserFilters}>Clear Filters</button>
             <span>{filteredUsers.length} of {users.length} shown</span>
           </div>
           <div className="table">
