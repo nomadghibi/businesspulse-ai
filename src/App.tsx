@@ -883,6 +883,18 @@ function DataSources({
 
 function Reports({ reports, start, end, refresh }: { reports: Report[]; start: string; end: string; refresh: () => Promise<void> }) {
   const [busy, setBusy] = useState(false);
+  const [query, setQuery] = useState("");
+  const [sort, setSort] = useState<"newest" | "oldest">("newest");
+  const filtered = reports.filter((report) => {
+    const q = query.trim().toLowerCase();
+    if (!q) return true;
+    return report.title.toLowerCase().includes(q) || report.summary.toLowerCase().includes(q) || report.reportType.toLowerCase().includes(q);
+  });
+  const sorted = [...filtered].sort((a, b) => {
+    const aTs = Date.parse(a.createdAt);
+    const bTs = Date.parse(b.createdAt);
+    return sort === "oldest" ? aTs - bTs : bTs - aTs;
+  });
   async function create() {
     setBusy(true);
     try {
@@ -895,7 +907,15 @@ function Reports({ reports, start, end, refresh }: { reports: Report[]; start: s
   return (
     <div className="stack">
       <button className="primary align-start" onClick={create}>{busy ? "Generating..." : "Generate Weekly Brief"}</button>
-      {reports.map((report) => (
+      <div className="upload-row">
+        <input value={query} onChange={(event) => setQuery(event.target.value)} placeholder="Search reports" />
+        <select value={sort} onChange={(event) => setSort(event.target.value as "newest" | "oldest")}>
+          <option value="newest">Newest first</option>
+          <option value="oldest">Oldest first</option>
+        </select>
+        <span>{sorted.length} of {reports.length} shown</span>
+      </div>
+      {sorted.map((report) => (
         <section className="report" key={report.id}>
           <span className="eyebrow">{report.reportType}</span>
           <h2>{report.title}</h2>
@@ -903,7 +923,7 @@ function Reports({ reports, start, end, refresh }: { reports: Report[]; start: s
           <ul className="bullets">{report.content.metricChanges.slice(0, 6).map((item) => <li key={item}>{item}</li>)}</ul>
         </section>
       ))}
-      {!reports.length ? <Empty text="No generated reports yet." /> : null}
+      {!sorted.length ? <Empty text={reports.length ? "No reports match this filter." : "No generated reports yet."} /> : null}
     </div>
   );
 }
@@ -944,6 +964,18 @@ function Settings({ onSync, syncMessage, users, onUsersChanged }: { onSync: () =
   const [invitePassword, setInvitePassword] = useState("changeme123");
   const [busy, setBusy] = useState(false);
   const [billingMsg, setBillingMsg] = useState("");
+  const [userQuery, setUserQuery] = useState("");
+  const [statusFilter, setStatusFilter] = useState<"all" | "active" | "disabled">("all");
+  const roleCounts = users.reduce<Record<string, number>>((acc, user) => {
+    acc[user.role] = (acc[user.role] ?? 0) + 1;
+    return acc;
+  }, {});
+  const filteredUsers = users.filter((user) => {
+    const q = userQuery.trim().toLowerCase();
+    const queryMatch = !q || user.email.toLowerCase().includes(q);
+    const statusMatch = statusFilter === "all" || (statusFilter === "active" ? !user.disabled : user.disabled);
+    return queryMatch && statusMatch;
+  });
   return (
     <div className="stack">
       <Panel title="Stripe Integration">
@@ -962,6 +994,7 @@ function Settings({ onSync, syncMessage, users, onUsersChanged }: { onSync: () =
       </Panel>
       <Panel title="Users And Roles">
         <div className="stack">
+          <p>Owners: {roleCounts.owner ?? 0} | Admins: {roleCounts.admin ?? 0} | Viewers: {roleCounts.viewer ?? 0}</p>
           <div className="upload-row">
             <input value={inviteEmail} onChange={(event) => setInviteEmail(event.target.value)} placeholder="new.user@company.com" />
             <select value={inviteRole} onChange={(event) => setInviteRole(event.target.value as "owner" | "admin" | "viewer")}>
@@ -976,9 +1009,18 @@ function Settings({ onSync, syncMessage, users, onUsersChanged }: { onSync: () =
               await onUsersChanged();
             }}>Invite</button>
           </div>
+          <div className="upload-row">
+            <input value={userQuery} onChange={(event) => setUserQuery(event.target.value)} placeholder="Search users by email" />
+            <select value={statusFilter} onChange={(event) => setStatusFilter(event.target.value as "all" | "active" | "disabled")}>
+              <option value="all">All statuses</option>
+              <option value="active">Active only</option>
+              <option value="disabled">Disabled only</option>
+            </select>
+            <span>{filteredUsers.length} of {users.length} shown</span>
+          </div>
           <div className="table">
             <div className="table-head"><span>Email</span><span>Role</span><span>Status</span><span>Action</span></div>
-            {users.map((user) => (
+            {filteredUsers.map((user) => (
               <div className="table-row" key={user.userId}>
                 <span>{user.email}</span>
                 <select value={user.role} onChange={async (event) => {
@@ -996,6 +1038,7 @@ function Settings({ onSync, syncMessage, users, onUsersChanged }: { onSync: () =
                 }}>{user.disabled ? "Enable" : "Disable"}</button>
               </div>
             ))}
+            {!filteredUsers.length ? <Empty text="No users match this filter." /> : null}
           </div>
         </div>
       </Panel>
