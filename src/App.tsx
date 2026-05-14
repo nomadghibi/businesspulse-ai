@@ -1203,6 +1203,9 @@ function Recommendations({
     if (sortBy === "priority_desc") return (priorityRank[b.priority] ?? 0) - (priorityRank[a.priority] ?? 0);
     return (priorityRank[a.priority] ?? 0) - (priorityRank[b.priority] ?? 0);
   });
+  const bulkAcceptCount = sorted.filter((rec) => rec.status !== "accepted").length;
+  const bulkCompleteCount = sorted.filter((rec) => rec.status !== "completed").length;
+  const bulkDismissCount = sorted.filter((rec) => rec.status !== "dismissed").length;
 
   useEffect(() => {
     localStorage.setItem("bp_recommendations_priority", priorityFilter);
@@ -1277,9 +1280,9 @@ function Recommendations({
         </select>
         <input value={query} onChange={(event) => setQuery(event.target.value)} placeholder="Search recommendations" />
         <button onClick={clearRecommendationFilters}>Clear Filters</button>
-        <button onClick={() => void bulkUpdateFiltered("accepted")} disabled={!sorted.length}>Mark Filtered Accepted</button>
-        <button onClick={() => void bulkUpdateFiltered("completed")} disabled={!sorted.length}>Mark Filtered Completed</button>
-        <button onClick={() => void bulkUpdateFiltered("dismissed")} disabled={!sorted.length}>Mark Filtered Dismissed</button>
+        <button onClick={() => void bulkUpdateFiltered("accepted")} disabled={!bulkAcceptCount}>Mark Filtered Accepted ({bulkAcceptCount})</button>
+        <button onClick={() => void bulkUpdateFiltered("completed")} disabled={!bulkCompleteCount}>Mark Filtered Completed ({bulkCompleteCount})</button>
+        <button onClick={() => void bulkUpdateFiltered("dismissed")} disabled={!bulkDismissCount}>Mark Filtered Dismissed ({bulkDismissCount})</button>
         <button onClick={exportRecommendationsCsv} disabled={!filtered.length}>Export CSV</button>
         <span>{filtered.length} of {recommendations.length} shown</span>
       </div>
