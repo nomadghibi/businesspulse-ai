@@ -1181,6 +1181,7 @@ function Recommendations({
   const [statusFilter, setStatusFilter] = useState<"all" | "new" | "accepted" | "rejected" | "completed" | "dismissed">(
     () => (localStorage.getItem("bp_recommendations_status") as "all" | "new" | "accepted" | "rejected" | "completed" | "dismissed") ?? "all"
   );
+  const [actionableOnly, setActionableOnly] = useState(() => localStorage.getItem("bp_recommendations_actionable_only") === "true");
   const [sortBy, setSortBy] = useState<"updated_desc" | "updated_asc" | "priority_desc" | "priority_asc">(
     () => (localStorage.getItem("bp_recommendations_sort") as "updated_desc" | "updated_asc" | "priority_desc" | "priority_asc") ?? "updated_desc"
   );
@@ -1189,9 +1190,10 @@ function Recommendations({
   const filtered = recommendations.filter((rec) => {
     const byPriority = priorityFilter === "all" || rec.priority === priorityFilter;
     const byStatus = statusFilter === "all" || rec.status === statusFilter;
+    const byActionable = !actionableOnly || rec.status === "new" || rec.status === "accepted";
     const q = query.trim().toLowerCase();
     const byQuery = !q || rec.title.toLowerCase().includes(q) || rec.description.toLowerCase().includes(q) || rec.expectedImpact.toLowerCase().includes(q);
-    return byPriority && byStatus && byQuery;
+    return byPriority && byStatus && byActionable && byQuery;
   });
   const statusCounts = recommendations.reduce<Record<string, number>>((acc, rec) => {
     acc[rec.status] = (acc[rec.status] ?? 0) + 1;
@@ -1211,9 +1213,10 @@ function Recommendations({
   useEffect(() => {
     localStorage.setItem("bp_recommendations_priority", priorityFilter);
     localStorage.setItem("bp_recommendations_status", statusFilter);
+    localStorage.setItem("bp_recommendations_actionable_only", actionableOnly ? "true" : "false");
     localStorage.setItem("bp_recommendations_sort", sortBy);
     localStorage.setItem("bp_recommendations_query", query);
-  }, [priorityFilter, statusFilter, sortBy, query]);
+  }, [priorityFilter, statusFilter, actionableOnly, sortBy, query]);
 
   useEffect(() => {
     if (!actionMessage) return;
@@ -1224,6 +1227,7 @@ function Recommendations({
   function clearRecommendationFilters() {
     setPriorityFilter("all");
     setStatusFilter("all");
+    setActionableOnly(false);
     setSortBy("updated_desc");
     setQuery("");
   }
@@ -1286,6 +1290,10 @@ function Recommendations({
           <option value="completed">Completed</option>
           <option value="rejected">Rejected</option>
         </select>
+        <label className="upload-row">
+          <input type="checkbox" checked={actionableOnly} onChange={(event) => setActionableOnly(event.target.checked)} />
+          Actionable only
+        </label>
         <select value={sortBy} onChange={(event) => setSortBy(event.target.value as "updated_desc" | "updated_asc" | "priority_desc" | "priority_asc")}>
           <option value="updated_desc">Recently updated</option>
           <option value="updated_asc">Oldest updated</option>
