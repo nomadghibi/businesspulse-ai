@@ -507,6 +507,24 @@ function Dashboard({
     URL.revokeObjectURL(url);
   }
 
+  function exportFreshnessCsv() {
+    const lines = [
+      "dataset,status,last_upload,freshness",
+      ...freshnessRows.map((row) =>
+        [row.dataset, row.status, escapeCsv(row.updated), row.freshness].join(",")
+      )
+    ];
+    const blob = new Blob([lines.join("\n")], { type: "text/csv;charset=utf-8" });
+    const url = URL.createObjectURL(blob);
+    const anchor = document.createElement("a");
+    anchor.href = url;
+    anchor.download = `data-freshness-${new Date().toISOString().slice(0, 10)}.csv`;
+    document.body.appendChild(anchor);
+    anchor.click();
+    anchor.remove();
+    URL.revokeObjectURL(url);
+  }
+
   return (
     <div className="stack">
       <section className={`notice risk-${operationalRiskLevel}`}>
@@ -614,6 +632,7 @@ function Dashboard({
             <span className="freshness-fresh">Fresh: &lt;7d</span>
             <span className="freshness-warning">Warning: 7-13d</span>
             <span className="freshness-stale">Stale: 14+d</span>
+            <button onClick={exportFreshnessCsv}>Export CSV</button>
           </div>
           <div className="table freshness-table">
             <div className="table-head"><span>Dataset</span><span>Status</span><span>Last upload</span><span>Action</span></div>
