@@ -1304,6 +1304,7 @@ function Recommendations({
         {sorted.map((rec) => (
           <div key={rec.id} className="stack">
             <StatusItem title={rec.title} meta={rec.priority} body={`${rec.description} Expected impact: ${rec.expectedImpact}`} />
+            <span>Last updated: {formatLastUpdated(rec.updatedAt)}</span>
             <button className="align-start" onClick={() => onUseInAsk(`How should we execute this recommendation first: ${rec.title}? Context: ${rec.description}. Expected impact: ${rec.expectedImpact}.`)}>
               Use In Ask AI
             </button>
