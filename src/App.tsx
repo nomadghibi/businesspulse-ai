@@ -1220,6 +1220,9 @@ function Recommendations({
 
   async function bulkUpdateFiltered(status: "accepted" | "dismissed" | "completed") {
     const targets = sorted.filter((rec) => rec.status !== status);
+    if (!targets.length) return;
+    const confirmed = window.confirm(`Update ${targets.length} filtered recommendations to "${status}"?`);
+    if (!confirmed) return;
     await Promise.all(targets.map((rec) => updateRecommendationStatus(rec.id, status)));
     await onStatusChanged();
   }
