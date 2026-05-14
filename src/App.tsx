@@ -1251,8 +1251,19 @@ function Recommendations({
             </button>
             <div className="upload-row">
               <span>Status: {rec.status}</span>
-              <button onClick={async () => { await updateRecommendationStatus(rec.id, "accepted"); await onStatusChanged(); }}>Accept</button>
-              <button onClick={async () => { await updateRecommendationStatus(rec.id, "dismissed"); await onStatusChanged(); }}>Dismiss</button>
+              <select
+                value={rec.status}
+                onChange={async (event) => {
+                  await updateRecommendationStatus(rec.id, event.target.value as "new" | "accepted" | "rejected" | "completed" | "dismissed");
+                  await onStatusChanged();
+                }}
+              >
+                <option value="new">New</option>
+                <option value="accepted">Accepted</option>
+                <option value="dismissed">Dismissed</option>
+                <option value="completed">Completed</option>
+                <option value="rejected">Rejected</option>
+              </select>
             </div>
           </div>
         ))}
