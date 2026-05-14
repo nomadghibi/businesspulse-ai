@@ -37,6 +37,19 @@ function dateRangeDaysAgo(days: number) {
   return { start: dateDaysAgo(days - 1), end: dateDaysAgo(0) };
 }
 
+function shiftDateRange(start: string, end: string, direction: "backward" | "forward") {
+  const startDate = new Date(`${start}T00:00:00`);
+  const endDate = new Date(`${end}T00:00:00`);
+  const spanDays = Math.max(1, Math.round((endDate.getTime() - startDate.getTime()) / (24 * 60 * 60 * 1000)) + 1);
+  const delta = direction === "backward" ? -spanDays : spanDays;
+  startDate.setDate(startDate.getDate() + delta);
+  endDate.setDate(endDate.getDate() + delta);
+  return {
+    start: startDate.toISOString().slice(0, 10),
+    end: endDate.toISOString().slice(0, 10)
+  };
+}
+
 export function App() {
   const initialRange = initialDateRange();
   const [org, setOrg] = useState<Organization | null>(null);
@@ -190,6 +203,25 @@ export function App() {
     };
   }, [authed]);
 
+  useEffect(() => {
+    if (!authed) return;
+    const onKeyDown = (event: KeyboardEvent) => {
+      const target = event.target as HTMLElement | null;
+      const tagName = target?.tagName?.toLowerCase();
+      const isTyping = tagName === "input" || tagName === "textarea" || tagName === "select" || target?.isContentEditable;
+      if (isTyping) return;
+      if (event.key !== "[" && event.key !== "]") return;
+      event.preventDefault();
+      const next = shiftDateRange(start, end, event.key === "[" ? "backward" : "forward");
+      setStart(next.start);
+      setEnd(next.end);
+    };
+    window.addEventListener("keydown", onKeyDown);
+    return () => {
+      window.removeEventListener("keydown", onKeyDown);
+    };
+  }, [authed, start, end]);
+
   const tabs = [
     ["dashboard", BarChart3, "Dashboard"],
     ["ask", Bot, "Ask AI"],
@@ -220,7 +252,7 @@ export function App() {
             </button>
           ))}
         </nav>
-        <p className="sidebar-hint">Shortcuts: g then d/a/s/r</p>
+        <p className="sidebar-hint">Shortcuts: g then d/a/s/r, [ and ] for dates</p>
       </aside>
 
       <section className="workspace">
