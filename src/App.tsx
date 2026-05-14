@@ -440,10 +440,13 @@ function Dashboard({
   const timeToFirstInsight = formatTimeToFirstInsight(onboarding?.timeToFirstInsightSeconds ?? null, onboarding?.firstUploadAt ?? null);
   const freshnessRows = requiredDatasets.map((dataset) => {
     const upload = latestByDataset.get(dataset);
+    const ageDays = upload ? Math.floor((Date.now() - Date.parse(upload.createdAt)) / (24 * 60 * 60 * 1000)) : null;
+    const freshness = !upload ? "missing" : ageDays !== null && ageDays >= 14 ? "stale" : ageDays !== null && ageDays >= 7 ? "warning" : "fresh";
     return {
       dataset,
       status: upload?.status ?? "missing",
-      updated: upload ? formatLastUpdated(upload.createdAt) : "never"
+      updated: upload ? formatLastUpdated(upload.createdAt) : "never",
+      freshness
     };
   });
 
@@ -563,7 +566,7 @@ function Dashboard({
             {freshnessRows.map((row) => (
               <div className="table-row" key={row.dataset}>
                 <span>{row.dataset.replace("_", " ")}</span>
-                <span>{row.status}</span>
+                <span className={`freshness-${row.freshness}`}>{row.status}</span>
                 <span>{row.updated}</span>
               </div>
             ))}
