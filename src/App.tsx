@@ -138,9 +138,8 @@ export function App() {
   const windowDays = useMemo(() => dateWindowDays(start, end), [start, end]);
 
   async function copyCurrentViewLink() {
-    const url = `${window.location.origin}${window.location.pathname}?tab=${encodeURIComponent(active)}&start=${encodeURIComponent(start)}&end=${encodeURIComponent(end)}`;
     try {
-      await navigator.clipboard.writeText(url);
+      await navigator.clipboard.writeText(window.location.href);
       setViewLinkMessage("View link copied.");
     } catch {
       setViewLinkMessage("Unable to copy link in this browser.");
