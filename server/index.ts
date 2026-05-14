@@ -565,6 +565,23 @@ app.get("/api/recommendations", async (req, res, next) => {
   }
 });
 
+app.patch("/api/recommendations/:recommendationId/status", async (req, res, next) => {
+  try {
+    requireRole(req, res, ["owner", "admin", "viewer"]);
+    const body = z.object({ status: z.enum(["new", "accepted", "rejected", "completed", "dismissed"]) }).parse(req.body ?? {});
+    const organizationId = org(req);
+    const data = await storage.getOrgData(organizationId);
+    const recommendation = data.recommendations.find((item) => item.id === req.params.recommendationId);
+    if (!recommendation) return res.status(404).json({ error: "Recommendation not found" });
+    recommendation.status = body.status;
+    recommendation.updatedAt = new Date().toISOString();
+    await storage.saveOrgData(organizationId, data);
+    res.json({ ok: true });
+  } catch (error) {
+    next(error);
+  }
+});
+
 app.post("/api/recommendations/from-answer", async (req, res, next) => {
   try {
     requireRole(req, res, ["owner", "admin", "viewer"]);

@@ -160,6 +160,13 @@ export function createRecommendationFromAnswer(input: {
   });
 }
 
+export function updateRecommendationStatus(recommendationId: string, status: "new" | "accepted" | "rejected" | "completed" | "dismissed") {
+  return request<{ ok: true }>(`/recommendations/${recommendationId}/status`, {
+    method: "PATCH",
+    body: JSON.stringify({ status })
+  });
+}
+
 export function syncStripe(limit = 25) {
   return request<{ syncedCharges: number; scannedCharges: number }>("/integrations/stripe/sync", {
     method: "POST",

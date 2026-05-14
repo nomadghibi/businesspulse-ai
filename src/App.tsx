@@ -2,7 +2,7 @@ import { AlertTriangle, ArrowRight, BarChart3, Bot, CheckCircle2, Database, File
 import { useEffect, useMemo, useRef, useState } from "react";
 import { Area, AreaChart, Bar, BarChart, CartesianGrid, ResponsiveContainer, Tooltip, XAxis, YAxis } from "recharts";
 import type { AiAnswer, ColumnMapping, CsvPreview, DatasetType, FileUpload, MetricsResponse, Organization, Recommendation, Report } from "../shared/types";
-import { askAi, changePassword, clearToken, commitUploadCsv, createCheckout, createRecommendationFromAnswer, type AppUser, generateReport, getAlerts, getMetrics, getOnboardingStatus, getOrganization, getRecommendations, getReports, getUploads, getUsers, inviteUser, login, logout, type OnboardingStatus, previewUploadCsv, requestDemo, setToken, startTrial, syncStripe, trackEvent, trackPublicEvent, updateUserRole, updateUserStatus } from "./api";
+import { askAi, changePassword, clearToken, commitUploadCsv, createCheckout, createRecommendationFromAnswer, type AppUser, generateReport, getAlerts, getMetrics, getOnboardingStatus, getOrganization, getRecommendations, getReports, getUploads, getUsers, inviteUser, login, logout, type OnboardingStatus, previewUploadCsv, requestDemo, setToken, startTrial, syncStripe, trackEvent, trackPublicEvent, updateRecommendationStatus, updateUserRole, updateUserStatus } from "./api";
 
 const datasetTypes: Array<{ value: DatasetType; label: string }> = [
   { value: "customers", label: "Customers" },
@@ -236,7 +236,7 @@ export function App() {
         {metrics && active === "ask" ? <AskAI start={start} end={end} seedQuestion={askSeed} autoRunSeed={askAutoRun} onAutoRunComplete={() => setAskAutoRun(false)} onRecommendationSaved={refresh} /> : null}
         {active === "sources" ? <DataSources uploads={uploads} onboarding={onboarding} refresh={refresh} /> : null}
         {active === "reports" ? <Reports reports={reports} start={start} end={end} refresh={refresh} /> : null}
-        {active === "recommendations" ? <Recommendations recommendations={recommendations} onUseInAsk={(question) => { setAskSeed(question); setAskAutoRun(true); setActive("ask"); }} /> : null}
+        {active === "recommendations" ? <Recommendations recommendations={recommendations} onUseInAsk={(question) => { setAskSeed(question); setAskAutoRun(true); setActive("ask"); }} onStatusChanged={refresh} /> : null}
         {active === "settings" ? <Settings users={users} syncMessage={syncMessage} onSync={async () => {
           const result = await syncStripe(25);
           setSyncMessage(`Synced ${result.syncedCharges} new charges out of ${result.scannedCharges} scanned.`);
@@ -1168,10 +1168,12 @@ function Reports({ reports, start, end, refresh }: { reports: Report[]; start: s
 
 function Recommendations({
   recommendations,
-  onUseInAsk
+  onUseInAsk,
+  onStatusChanged
 }: {
   recommendations: Recommendation[];
   onUseInAsk: (question: string) => void;
+  onStatusChanged: () => Promise<void>;
 }) {
   const [priorityFilter, setPriorityFilter] = useState<"all" | "high" | "medium" | "low">(
     () => (localStorage.getItem("bp_recommendations_priority") as "all" | "high" | "medium" | "low") ?? "all"
@@ -1233,6 +1235,11 @@ function Recommendations({
             <button className="align-start" onClick={() => onUseInAsk(`How should we execute this recommendation first: ${rec.title}? Context: ${rec.description}. Expected impact: ${rec.expectedImpact}.`)}>
               Use In Ask AI
             </button>
+            <div className="upload-row">
+              <span>Status: {rec.status}</span>
+              <button onClick={async () => { await updateRecommendationStatus(rec.id, "accepted"); await onStatusChanged(); }}>Accept</button>
+              <button onClick={async () => { await updateRecommendationStatus(rec.id, "dismissed"); await onStatusChanged(); }}>Dismiss</button>
+            </div>
           </div>
         ))}
         {!filtered.length ? <Empty text="No recommendations match this filter." /> : null}
