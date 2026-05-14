@@ -176,6 +176,15 @@ export function App() {
     return { start: end, end: start };
   }
 
+  function resetViewState() {
+    const next = dateRangeDaysAgo(30);
+    setActive("dashboard");
+    setStart(next.start);
+    setEnd(next.end);
+    setLiveRefreshEnabled(true);
+    setError(null);
+  }
+
   async function copyCurrentViewLink() {
     try {
       await navigator.clipboard.writeText(window.location.href);
@@ -508,6 +517,7 @@ export function App() {
             <button onClick={() => setLiveRefreshEnabled((prev) => !prev)}>
               Live Refresh: {liveRefreshEnabled ? "On" : "Off"}
             </button>
+            <button onClick={resetViewState}>Reset View</button>
             {hasInvalidRange ? (
               <button
                 onClick={() => {
