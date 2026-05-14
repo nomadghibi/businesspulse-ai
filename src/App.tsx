@@ -2,7 +2,7 @@ import { AlertTriangle, ArrowRight, BarChart3, Bot, CheckCircle2, Database, File
 import { useEffect, useMemo, useRef, useState } from "react";
 import { Area, AreaChart, Bar, BarChart, CartesianGrid, ResponsiveContainer, Tooltip, XAxis, YAxis } from "recharts";
 import type { AiAnswer, ColumnMapping, CsvPreview, DatasetType, FileUpload, MetricsResponse, Organization, Recommendation, Report } from "../shared/types";
-import { askAi, changePassword, clearToken, commitUploadCsv, createCheckout, type AppUser, generateReport, getAlerts, getMetrics, getOnboardingStatus, getOrganization, getRecommendations, getReports, getUploads, getUsers, inviteUser, login, logout, type OnboardingStatus, previewUploadCsv, requestDemo, setToken, startTrial, syncStripe, trackEvent, trackPublicEvent, updateUserRole, updateUserStatus } from "./api";
+import { askAi, changePassword, clearToken, commitUploadCsv, createCheckout, createRecommendationFromAnswer, type AppUser, generateReport, getAlerts, getMetrics, getOnboardingStatus, getOrganization, getRecommendations, getReports, getUploads, getUsers, inviteUser, login, logout, type OnboardingStatus, previewUploadCsv, requestDemo, setToken, startTrial, syncStripe, trackEvent, trackPublicEvent, updateUserRole, updateUserStatus } from "./api";
 
 const datasetTypes: Array<{ value: DatasetType; label: string }> = [
   { value: "customers", label: "Customers" },
@@ -233,7 +233,7 @@ export function App() {
         {loading && !metrics ? <Loading /> : null}
 
         {metrics && active === "dashboard" ? <Dashboard metrics={metrics} uploads={uploads} alerts={alerts} recommendations={recommendations} onboarding={onboarding} onOpenSources={() => setActive("sources")} onOpenAsk={(question) => { setAskSeed(question); setAskAutoRun(true); setActive("ask"); }} /> : null}
-        {metrics && active === "ask" ? <AskAI start={start} end={end} seedQuestion={askSeed} autoRunSeed={askAutoRun} onAutoRunComplete={() => setAskAutoRun(false)} /> : null}
+        {metrics && active === "ask" ? <AskAI start={start} end={end} seedQuestion={askSeed} autoRunSeed={askAutoRun} onAutoRunComplete={() => setAskAutoRun(false)} onRecommendationSaved={refresh} /> : null}
         {active === "sources" ? <DataSources uploads={uploads} onboarding={onboarding} refresh={refresh} /> : null}
         {active === "reports" ? <Reports reports={reports} start={start} end={end} refresh={refresh} /> : null}
         {active === "recommendations" ? <Recommendations recommendations={recommendations} onUseInAsk={(question) => { setAskSeed(question); setAskAutoRun(true); setActive("ask"); }} /> : null}
@@ -669,19 +669,22 @@ function AskAI({
   end,
   seedQuestion,
   autoRunSeed,
-  onAutoRunComplete
+  onAutoRunComplete,
+  onRecommendationSaved
 }: {
   start: string;
   end: string;
   seedQuestion?: string;
   autoRunSeed?: boolean;
   onAutoRunComplete?: () => void;
+  onRecommendationSaved?: () => Promise<void>;
 }) {
   const [question, setQuestion] = useState(() => localStorage.getItem("bp_ask_question") ?? "Why did revenue change in this period?");
   const [answer, setAnswer] = useState<AiAnswer | null>(null);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [copyMessage, setCopyMessage] = useState<string | null>(null);
+  const [saveMessage, setSaveMessage] = useState<string | null>(null);
   const [history, setHistory] = useState<string[]>(() => {
     try {
       const raw = localStorage.getItem("bp_ask_history");
@@ -740,6 +743,20 @@ function AskAI({
     ].join("\n");
     await navigator.clipboard.writeText(text);
     setCopyMessage("Answer copied.");
+  }
+
+  async function saveAsRecommendation() {
+    if (!answer) return;
+    await createRecommendationFromAnswer({
+      title: answer.recommendedNextAction,
+      description: answer.directAnswer,
+      priority: answer.confidence === "high" ? "high" : answer.confidence === "medium" ? "medium" : "low",
+      expectedImpact: answer.supportingMetrics[0]?.value ?? "Operational clarity",
+      confidence: answer.confidence,
+      reason: "Saved from Ask AI"
+    });
+    setSaveMessage("Saved to recommendations.");
+    await onRecommendationSaved?.();
   }
 
   function clearHistory() {
@@ -815,8 +832,10 @@ function AskAI({
       {answer ? (
         <div className="upload-row">
           <button onClick={() => void copyAnswer()}>Copy Answer</button>
+          <button onClick={() => void saveAsRecommendation()}>Save As Recommendation</button>
           <button onClick={() => { setAnswer(null); setCopyMessage(null); }}>Clear Answer</button>
           {copyMessage ? <span>{copyMessage}</span> : null}
+          {saveMessage ? <span>{saveMessage}</span> : null}
         </div>
       ) : null}
     </div>

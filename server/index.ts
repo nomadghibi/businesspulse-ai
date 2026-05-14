@@ -565,6 +565,42 @@ app.get("/api/recommendations", async (req, res, next) => {
   }
 });
 
+app.post("/api/recommendations/from-answer", async (req, res, next) => {
+  try {
+    requireRole(req, res, ["owner", "admin", "viewer"]);
+    const body = z.object({
+      title: z.string().min(3),
+      description: z.string().min(3),
+      priority: z.enum(["low", "medium", "high"]).default("medium"),
+      expectedImpact: z.string().min(2).default("Operational clarity"),
+      confidence: z.enum(["low", "medium", "high"]).default("medium"),
+      reason: z.string().min(2).default("Saved from Ask AI")
+    }).parse(req.body ?? {});
+    const organizationId = org(req);
+    const data = await storage.getOrgData(organizationId);
+    const createdAt = new Date().toISOString();
+    const recommendation = {
+      id: `rec_${crypto.randomUUID()}`,
+      organizationId,
+      title: body.title,
+      description: body.description,
+      reason: body.reason,
+      priority: body.priority,
+      expectedImpact: body.expectedImpact,
+      confidence: body.confidence,
+      status: "new" as const,
+      requiresApproval: true,
+      createdAt,
+      updatedAt: createdAt
+    };
+    data.recommendations.unshift(recommendation);
+    await storage.saveOrgData(organizationId, data);
+    res.json(recommendation);
+  } catch (error) {
+    next(error);
+  }
+});
+
 app.get("/api/agent-runs", async (req, res, next) => {
   try {
     const data = await storage.getOrgData(org(req));

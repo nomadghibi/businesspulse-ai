@@ -146,6 +146,20 @@ export function getRecommendations() {
   return request<Recommendation[]>("/recommendations");
 }
 
+export function createRecommendationFromAnswer(input: {
+  title: string;
+  description: string;
+  priority?: "low" | "medium" | "high";
+  expectedImpact?: string;
+  confidence?: "low" | "medium" | "high";
+  reason?: string;
+}) {
+  return request<Recommendation>("/recommendations/from-answer", {
+    method: "POST",
+    body: JSON.stringify(input)
+  });
+}
+
 export function syncStripe(limit = 25) {
   return request<{ syncedCharges: number; scannedCharges: number }>("/integrations/stripe/sync", {
     method: "POST",
