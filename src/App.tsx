@@ -704,6 +704,11 @@ function AskAI({
     setCopyMessage("Answer copied.");
   }
 
+  function clearHistory() {
+    setHistory([]);
+    localStorage.removeItem("bp_ask_history");
+  }
+
   const suggestions = ["Why did revenue drop last week?", "Which lead source gives us the best customers?", "Are we spending too much on ads?"];
 
   return (
@@ -729,6 +734,7 @@ function AskAI({
         {history.length ? (
           <div className="chips">
             {history.map((item) => <button key={`history-${item}`} onClick={() => setQuestion(item)}>{item}</button>)}
+            <button onClick={clearHistory}>Clear History</button>
           </div>
         ) : null}
         {error ? <div className="notice error">{error}</div> : null}
@@ -1036,6 +1042,28 @@ function Reports({ reports, start, end, refresh }: { reports: Report[]; start: s
     setQuery("");
     setSort("newest");
   }
+
+  function exportReportsCsv() {
+    const lines = [
+      "id,report_type,title,summary,created_at",
+      ...sorted.map((report) => [
+        report.id,
+        report.reportType,
+        escapeCsv(report.title),
+        escapeCsv(report.summary),
+        report.createdAt
+      ].join(","))
+    ];
+    const blob = new Blob([lines.join("\n")], { type: "text/csv;charset=utf-8" });
+    const url = URL.createObjectURL(blob);
+    const anchor = document.createElement("a");
+    anchor.href = url;
+    anchor.download = `reports-${new Date().toISOString().slice(0, 10)}.csv`;
+    document.body.appendChild(anchor);
+    anchor.click();
+    anchor.remove();
+    URL.revokeObjectURL(url);
+  }
   async function create() {
     setBusy(true);
     try {
@@ -1055,6 +1083,7 @@ function Reports({ reports, start, end, refresh }: { reports: Report[]; start: s
           <option value="oldest">Oldest first</option>
         </select>
         <button onClick={clearReportFilters}>Clear Filters</button>
+        <button onClick={exportReportsCsv} disabled={!sorted.length}>Export CSV</button>
         <span>{sorted.length} of {reports.length} shown</span>
       </div>
       {sorted.map((report) => (
@@ -1176,6 +1205,22 @@ function Settings({ onSync, syncMessage, users, onUsersChanged }: { onSync: () =
     setStatusFilter("all");
   }
 
+  function exportUsersCsv() {
+    const lines = [
+      "user_id,email,role,status",
+      ...filteredUsers.map((user) => [user.userId, escapeCsv(user.email), user.role, user.disabled ? "disabled" : "active"].join(","))
+    ];
+    const blob = new Blob([lines.join("\n")], { type: "text/csv;charset=utf-8" });
+    const url = URL.createObjectURL(blob);
+    const anchor = document.createElement("a");
+    anchor.href = url;
+    anchor.download = `users-${new Date().toISOString().slice(0, 10)}.csv`;
+    document.body.appendChild(anchor);
+    anchor.click();
+    anchor.remove();
+    URL.revokeObjectURL(url);
+  }
+
   function resetLocalPreferences() {
     const keys = [
       "bp_active_tab",
@@ -1234,6 +1279,7 @@ function Settings({ onSync, syncMessage, users, onUsersChanged }: { onSync: () =
               <option value="disabled">Disabled only</option>
             </select>
             <button onClick={clearUserFilters}>Clear Filters</button>
+            <button onClick={exportUsersCsv} disabled={!filteredUsers.length}>Export CSV</button>
             <span>{filteredUsers.length} of {users.length} shown</span>
           </div>
           <div className="table">
