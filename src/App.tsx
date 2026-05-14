@@ -1218,7 +1218,7 @@ function Recommendations({
     setQuery("");
   }
 
-  async function bulkUpdateFiltered(status: "accepted" | "dismissed") {
+  async function bulkUpdateFiltered(status: "accepted" | "dismissed" | "completed") {
     const targets = sorted.filter((rec) => rec.status !== status);
     await Promise.all(targets.map((rec) => updateRecommendationStatus(rec.id, status)));
     await onStatusChanged();
@@ -1275,6 +1275,7 @@ function Recommendations({
         <input value={query} onChange={(event) => setQuery(event.target.value)} placeholder="Search recommendations" />
         <button onClick={clearRecommendationFilters}>Clear Filters</button>
         <button onClick={() => void bulkUpdateFiltered("accepted")} disabled={!sorted.length}>Mark Filtered Accepted</button>
+        <button onClick={() => void bulkUpdateFiltered("completed")} disabled={!sorted.length}>Mark Filtered Completed</button>
         <button onClick={() => void bulkUpdateFiltered("dismissed")} disabled={!sorted.length}>Mark Filtered Dismissed</button>
         <button onClick={exportRecommendationsCsv} disabled={!filtered.length}>Export CSV</button>
         <span>{filtered.length} of {recommendations.length} shown</span>
