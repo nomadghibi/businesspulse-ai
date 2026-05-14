@@ -644,11 +644,25 @@ function AskAI({
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [copyMessage, setCopyMessage] = useState<string | null>(null);
+  const [history, setHistory] = useState<string[]>(() => {
+    try {
+      const raw = localStorage.getItem("bp_ask_history");
+      if (!raw) return [];
+      const parsed = JSON.parse(raw) as unknown;
+      return Array.isArray(parsed) ? parsed.filter((item): item is string => typeof item === "string").slice(0, 5) : [];
+    } catch {
+      return [];
+    }
+  });
   const normalizedQuestion = question.trim();
 
   useEffect(() => {
     localStorage.setItem("bp_ask_question", question);
   }, [question]);
+
+  useEffect(() => {
+    localStorage.setItem("bp_ask_history", JSON.stringify(history.slice(0, 5)));
+  }, [history]);
 
   useEffect(() => {
     if (!seedQuestion) return;
@@ -663,6 +677,7 @@ function AskAI({
     try {
       setAnswer(await askAi(requestQuestion, start, end));
       setCopyMessage(null);
+      setHistory((prev) => [requestQuestion, ...prev.filter((item) => item !== requestQuestion)].slice(0, 5));
     } catch (err) {
       setError(err instanceof Error ? err.message : "Unable to get AI answer right now.");
     } finally {
@@ -711,6 +726,11 @@ function AskAI({
         <div className="chips">
           {suggestions.map((item) => <button key={item} onClick={() => setQuestion(item)}>{item}</button>)}
         </div>
+        {history.length ? (
+          <div className="chips">
+            {history.map((item) => <button key={`history-${item}`} onClick={() => setQuestion(item)}>{item}</button>)}
+          </div>
+        ) : null}
         {error ? <div className="notice error">{error}</div> : null}
       </Panel>
       {answer ? (
