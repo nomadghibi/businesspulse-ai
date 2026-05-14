@@ -162,6 +162,11 @@ export function App() {
   const forwardEnabled = useMemo(() => canShiftForward(end), [end]);
   const hasInvalidRange = start > end;
 
+  function normalizeDateRangeForRefresh() {
+    if (!hasInvalidRange) return { start, end };
+    return { start: end, end: start };
+  }
+
   async function copyCurrentViewLink() {
     try {
       await navigator.clipboard.writeText(window.location.href);
@@ -435,8 +440,34 @@ export function App() {
             <button onClick={() => { const next = alignRangeToToday(start, end); setStart(next.start); setEnd(next.end); }}>Today</button>
             <button onClick={() => { const next = dateRangeDaysAgo(30); setStart(next.start); setEnd(next.end); }}>Reset 30d</button>
             <button onClick={() => void copyCurrentViewLink()} disabled={hasInvalidRange}>Copy View Link</button>
-            <input aria-label="Start date" type="date" value={start} max={dateDaysAgo(0)} onChange={(event) => setStart(clampDateToToday(event.target.value))} />
-            <input aria-label="End date" type="date" value={end} max={dateDaysAgo(0)} onChange={(event) => setEnd(clampDateToToday(event.target.value))} />
+            <input
+              aria-label="Start date"
+              type="date"
+              value={start}
+              max={dateDaysAgo(0)}
+              onChange={(event) => setStart(clampDateToToday(event.target.value))}
+              onKeyDown={(event) => {
+                if (event.key !== "Enter") return;
+                const next = normalizeDateRangeForRefresh();
+                setStart(next.start);
+                setEnd(next.end);
+                void refresh({ silent: true });
+              }}
+            />
+            <input
+              aria-label="End date"
+              type="date"
+              value={end}
+              max={dateDaysAgo(0)}
+              onChange={(event) => setEnd(clampDateToToday(event.target.value))}
+              onKeyDown={(event) => {
+                if (event.key !== "Enter") return;
+                const next = normalizeDateRangeForRefresh();
+                setStart(next.start);
+                setEnd(next.end);
+                void refresh({ silent: true });
+              }}
+            />
             <button onClick={() => void refresh({ silent: true })} disabled={refreshing || hasInvalidRange}>
               {refreshing ? "Refreshing..." : "Refresh"}
             </button>
