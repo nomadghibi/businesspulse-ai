@@ -452,6 +452,7 @@ function Dashboard({
       freshness
     };
   });
+  const staleOrMissingCount = freshnessRows.filter((row) => row.freshness === "stale" || row.freshness === "missing").length;
   const staleDatasets = freshnessRows.filter((row) => row.freshness === "stale" || row.freshness === "missing").map((row) => row.dataset);
 
   function exportKpisCsv() {
@@ -566,6 +567,12 @@ function Dashboard({
           </div>
         </Panel>
         <Panel title="Data Freshness">
+          <div className="upload-row">
+            <span><strong>{staleOrMissingCount}</strong> datasets need attention</span>
+            <span className="freshness-fresh">Fresh: &lt;7d</span>
+            <span className="freshness-warning">Warning: 7-13d</span>
+            <span className="freshness-stale">Stale: 14+d</span>
+          </div>
           <div className="table freshness-table">
             <div className="table-head"><span>Dataset</span><span>Status</span><span>Last upload</span></div>
             {freshnessRows.map((row) => (
