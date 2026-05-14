@@ -20,6 +20,14 @@ const datasetTargetFields: Record<DatasetType, string[]> = {
   marketing_spend: ["date", "platform", "campaign", "impressions", "clicks", "spend", "leads", "conversions"]
 };
 
+const allowedTabs = ["dashboard", "sources", "ask", "reports", "recommendations", "settings"] as const;
+type AppTab = typeof allowedTabs[number];
+
+function normalizeTab(value: string | null | undefined): AppTab {
+  if (value && allowedTabs.includes(value as AppTab)) return value as AppTab;
+  return "dashboard";
+}
+
 function dateDaysAgo(days: number) {
   const date = new Date();
   date.setDate(date.getDate() - days);
@@ -89,7 +97,6 @@ function dateWindowDays(start: string, end: string) {
 export function App() {
   const initialRange = initialDateRange();
   const initialTabFromUrl = readUrlViewState().tab;
-  const allowedTabs = new Set(["dashboard", "sources", "ask", "reports", "recommendations", "users", "settings"]);
   const [org, setOrg] = useState<Organization | null>(null);
   const [metrics, setMetrics] = useState<MetricsResponse | null>(null);
   const [uploads, setUploads] = useState<FileUpload[]>([]);
@@ -97,10 +104,7 @@ export function App() {
   const [onboarding, setOnboarding] = useState<OnboardingStatus | null>(null);
   const [recommendations, setRecommendations] = useState<Recommendation[]>([]);
   const [alerts, setAlerts] = useState<Array<{ title: string; severity: string; description: string }>>([]);
-  const [active, setActive] = useState(() => {
-    if (initialTabFromUrl && allowedTabs.has(initialTabFromUrl)) return initialTabFromUrl;
-    return localStorage.getItem("bp_active_tab") ?? "dashboard";
-  });
+  const [active, setActive] = useState<AppTab>(() => normalizeTab(initialTabFromUrl ?? localStorage.getItem("bp_active_tab")));
   const [start, setStart] = useState(initialRange.start);
   const [end, setEnd] = useState(initialRange.end);
   const [loading, setLoading] = useState(true);
@@ -233,7 +237,7 @@ export function App() {
   useEffect(() => {
     const onPopState = () => {
       const { tab, start: nextStart, end: nextEnd } = readUrlViewState();
-      if (tab && allowedTabs.has(tab)) setActive(tab);
+      setActive(normalizeTab(tab));
       if (nextStart && nextEnd && isIsoDate(nextStart) && isIsoDate(nextEnd) && nextStart <= nextEnd) {
         setStart(nextStart);
         setEnd(nextEnd);
