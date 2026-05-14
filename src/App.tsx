@@ -153,6 +153,43 @@ export function App() {
     return () => window.clearInterval(interval);
   }, [authed, mustChangePassword, start, end]);
 
+  useEffect(() => {
+    if (!authed) return;
+    let awaitingSecondKey = false;
+    let timeoutId: number | null = null;
+    const onKeyDown = (event: KeyboardEvent) => {
+      const target = event.target as HTMLElement | null;
+      const tagName = target?.tagName?.toLowerCase();
+      const isTyping = tagName === "input" || tagName === "textarea" || tagName === "select" || target?.isContentEditable;
+      if (isTyping) return;
+      const key = event.key.toLowerCase();
+      if (!awaitingSecondKey) {
+        if (key !== "g") return;
+        awaitingSecondKey = true;
+        if (timeoutId) window.clearTimeout(timeoutId);
+        timeoutId = window.setTimeout(() => {
+          awaitingSecondKey = false;
+          timeoutId = null;
+        }, 1200);
+        return;
+      }
+      awaitingSecondKey = false;
+      if (timeoutId) {
+        window.clearTimeout(timeoutId);
+        timeoutId = null;
+      }
+      if (key === "d") setActive("dashboard");
+      if (key === "a") setActive("ask");
+      if (key === "s") setActive("sources");
+      if (key === "r") setActive("recommendations");
+    };
+    window.addEventListener("keydown", onKeyDown);
+    return () => {
+      window.removeEventListener("keydown", onKeyDown);
+      if (timeoutId) window.clearTimeout(timeoutId);
+    };
+  }, [authed]);
+
   const tabs = [
     ["dashboard", BarChart3, "Dashboard"],
     ["ask", Bot, "Ask AI"],
@@ -183,6 +220,7 @@ export function App() {
             </button>
           ))}
         </nav>
+        <p className="sidebar-hint">Shortcuts: g then d/a/s/r</p>
       </aside>
 
       <section className="workspace">
