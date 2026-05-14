@@ -1185,6 +1185,7 @@ function Recommendations({
     () => (localStorage.getItem("bp_recommendations_sort") as "updated_desc" | "updated_asc" | "priority_desc" | "priority_asc") ?? "updated_desc"
   );
   const [query, setQuery] = useState(() => localStorage.getItem("bp_recommendations_query") ?? "");
+  const [actionMessage, setActionMessage] = useState<string | null>(null);
   const filtered = recommendations.filter((rec) => {
     const byPriority = priorityFilter === "all" || rec.priority === priorityFilter;
     const byStatus = statusFilter === "all" || rec.status === statusFilter;
@@ -1226,8 +1227,13 @@ function Recommendations({
     if (!targets.length) return;
     const confirmed = window.confirm(`Update ${targets.length} filtered recommendations to "${status}"?`);
     if (!confirmed) return;
-    await Promise.all(targets.map((rec) => updateRecommendationStatus(rec.id, status)));
-    await onStatusChanged();
+    try {
+      await Promise.all(targets.map((rec) => updateRecommendationStatus(rec.id, status)));
+      await onStatusChanged();
+      setActionMessage(`Updated ${targets.length} recommendations to "${status}".`);
+    } catch (error) {
+      setActionMessage(error instanceof Error ? error.message : "Failed to update recommendations.");
+    }
   }
 
   function exportRecommendationsCsv() {
@@ -1258,6 +1264,7 @@ function Recommendations({
         <button className={statusFilter === "rejected" ? "range-active" : ""} onClick={() => setStatusFilter("rejected")}>Rejected: {statusCounts.rejected ?? 0}</button>
         <button className={statusFilter === "all" ? "range-active" : ""} onClick={() => setStatusFilter("all")}>All</button>
       </div>
+      {actionMessage ? <div className="notice">{actionMessage}</div> : null}
       <div className="upload-row">
         <select value={priorityFilter} onChange={(event) => setPriorityFilter(event.target.value as "all" | "high" | "medium" | "low")}>
           <option value="all">All priorities</option>
@@ -1299,8 +1306,14 @@ function Recommendations({
               <select
                 value={rec.status}
                 onChange={async (event) => {
-                  await updateRecommendationStatus(rec.id, event.target.value as "new" | "accepted" | "rejected" | "completed" | "dismissed");
-                  await onStatusChanged();
+                  try {
+                    const nextStatus = event.target.value as "new" | "accepted" | "rejected" | "completed" | "dismissed";
+                    await updateRecommendationStatus(rec.id, nextStatus);
+                    await onStatusChanged();
+                    setActionMessage(`Updated "${rec.title}" to "${nextStatus}".`);
+                  } catch (error) {
+                    setActionMessage(error instanceof Error ? error.message : "Failed to update recommendation.");
+                  }
                 }}
               >
                 <option value="new">New</option>
