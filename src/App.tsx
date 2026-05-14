@@ -236,7 +236,7 @@ export function App() {
         {metrics && active === "ask" ? <AskAI start={start} end={end} seedQuestion={askSeed} autoRunSeed={askAutoRun} onAutoRunComplete={() => setAskAutoRun(false)} /> : null}
         {active === "sources" ? <DataSources uploads={uploads} onboarding={onboarding} refresh={refresh} /> : null}
         {active === "reports" ? <Reports reports={reports} start={start} end={end} refresh={refresh} /> : null}
-        {active === "recommendations" ? <Recommendations recommendations={recommendations} /> : null}
+        {active === "recommendations" ? <Recommendations recommendations={recommendations} onUseInAsk={(question) => { setAskSeed(question); setAskAutoRun(true); setActive("ask"); }} /> : null}
         {active === "settings" ? <Settings users={users} syncMessage={syncMessage} onSync={async () => {
           const result = await syncStripe(25);
           setSyncMessage(`Synced ${result.syncedCharges} new charges out of ${result.scannedCharges} scanned.`);
@@ -1070,7 +1070,13 @@ function Reports({ reports, start, end, refresh }: { reports: Report[]; start: s
   );
 }
 
-function Recommendations({ recommendations }: { recommendations: Recommendation[] }) {
+function Recommendations({
+  recommendations,
+  onUseInAsk
+}: {
+  recommendations: Recommendation[];
+  onUseInAsk: (question: string) => void;
+}) {
   const [priorityFilter, setPriorityFilter] = useState<"all" | "high" | "medium" | "low">(
     () => (localStorage.getItem("bp_recommendations_priority") as "all" | "high" | "medium" | "low") ?? "all"
   );
@@ -1125,7 +1131,14 @@ function Recommendations({ recommendations }: { recommendations: Recommendation[
         <span>{filtered.length} of {recommendations.length} shown</span>
       </div>
       <div className="list">
-        {filtered.map((rec) => <StatusItem key={rec.id} title={rec.title} meta={rec.priority} body={`${rec.description} Expected impact: ${rec.expectedImpact}`} />)}
+        {filtered.map((rec) => (
+          <div key={rec.id} className="stack">
+            <StatusItem title={rec.title} meta={rec.priority} body={`${rec.description} Expected impact: ${rec.expectedImpact}`} />
+            <button className="align-start" onClick={() => onUseInAsk(`How should we execute this recommendation first: ${rec.title}? Context: ${rec.description}. Expected impact: ${rec.expectedImpact}.`)}>
+              Use In Ask AI
+            </button>
+          </div>
+        ))}
         {!filtered.length ? <Empty text="No recommendations match this filter." /> : null}
       </div>
     </Panel>
