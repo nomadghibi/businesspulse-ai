@@ -490,6 +490,24 @@ export function App() {
       const tagName = target?.tagName?.toLowerCase();
       const isTyping = tagName === "input" || tagName === "textarea" || tagName === "select" || target?.isContentEditable;
       if (isTyping) return;
+      if (!(event.shiftKey && (event.key === "[" || event.key === "]"))) return;
+      event.preventDefault();
+      if (event.key === "]" && !canShiftForward(end)) return;
+      const next = shiftDateRangeWithoutFuture(start, end, event.key === "[" ? "backward" : "forward");
+      setStart(next.start);
+      setEnd(next.end);
+    };
+    window.addEventListener("keydown", onKeyDown);
+    return () => window.removeEventListener("keydown", onKeyDown);
+  }, [authed, start, end]);
+
+  useEffect(() => {
+    if (!authed) return;
+    const onKeyDown = (event: KeyboardEvent) => {
+      const target = event.target as HTMLElement | null;
+      const tagName = target?.tagName?.toLowerCase();
+      const isTyping = tagName === "input" || tagName === "textarea" || tagName === "select" || target?.isContentEditable;
+      if (isTyping) return;
       if (!(event.shiftKey && event.key.toLowerCase() === "d")) return;
       event.preventDefault();
       setActive("dashboard");
@@ -751,6 +769,7 @@ export function App() {
               <li><code>Shift</code>+<code>R</code>: Refresh current view</li>
               <li><code>Shift</code>+<code>L</code>: Toggle live refresh</li>
               <li><code>Shift</code>+<code>T</code>: Align range to today</li>
+              <li><code>Shift</code>+<code>[</code>/<code>]</code>: Move one period back/forward</li>
               <li><code>Shift</code>+<code>D</code>: Open dashboard</li>
               <li><code>Shift</code>+<code>A</code>: Open Ask AI</li>
               <li><code>Shift</code>+<code>S</code>: Open Data Sources</li>
@@ -778,6 +797,7 @@ export function App() {
                   "Shift+R: Refresh current view",
                   "Shift+L: Toggle live refresh",
                   "Shift+T: Align range to today",
+                  "Shift+[ / ]: Move one period back/forward",
                   "Shift+D: Open dashboard",
                   "Shift+A: Open Ask AI",
                   "Shift+S: Open Data Sources",
