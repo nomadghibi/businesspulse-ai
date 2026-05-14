@@ -373,6 +373,22 @@ export function App() {
       const tagName = target?.tagName?.toLowerCase();
       const isTyping = tagName === "input" || tagName === "textarea" || tagName === "select" || target?.isContentEditable;
       if (isTyping) return;
+      if (!(event.shiftKey && event.key.toLowerCase() === "r")) return;
+      event.preventDefault();
+      if (hasInvalidRange) return;
+      void refresh({ silent: true });
+    };
+    window.addEventListener("keydown", onKeyDown);
+    return () => window.removeEventListener("keydown", onKeyDown);
+  }, [authed, hasInvalidRange, start, end]);
+
+  useEffect(() => {
+    if (!authed) return;
+    const onKeyDown = (event: KeyboardEvent) => {
+      const target = event.target as HTMLElement | null;
+      const tagName = target?.tagName?.toLowerCase();
+      const isTyping = tagName === "input" || tagName === "textarea" || tagName === "select" || target?.isContentEditable;
+      if (isTyping) return;
       if (event.key === "?") {
         event.preventDefault();
         setShowShortcuts((prev) => !prev);
@@ -544,6 +560,7 @@ export function App() {
               <li><code>g</code> then <code>l</code>: Copy current view link</li>
               <li><code>[</code> and <code>]</code>: Shift date window</li>
               <li><code>1</code>/<code>2</code>/<code>3</code>/<code>4</code>: 7d/30d/90d/12m presets</li>
+              <li><code>Shift</code>+<code>R</code>: Refresh current view</li>
               <li><code>?</code>: Toggle this help</li>
               <li><code>Esc</code>: Close this help</li>
             </ul>
@@ -560,6 +577,7 @@ export function App() {
                   "g then l: Copy current view link",
                   "[ and ]: Shift date window",
                   "1/2/3/4: 7d/30d/90d/12m presets",
+                  "Shift+R: Refresh current view",
                   "?: Toggle shortcuts help",
                   "Esc: Close shortcuts help"
                 ].join("\n");
