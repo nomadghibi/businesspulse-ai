@@ -38,6 +38,10 @@ function isIsoDate(value: string) {
   return /^\d{4}-\d{2}-\d{2}$/.test(value);
 }
 
+function isValidDateRange(start: string, end: string) {
+  return isIsoDate(start) && isIsoDate(end) && start <= end;
+}
+
 function readUrlViewState() {
   const params = new URLSearchParams(window.location.search);
   const tab = params.get("tab");
@@ -48,7 +52,7 @@ function readUrlViewState() {
 
 function initialDateRange() {
   const { start: startParam, end: endParam } = readUrlViewState();
-  if (startParam && endParam && isIsoDate(startParam) && isIsoDate(endParam) && startParam <= endParam) {
+  if (startParam && endParam && isValidDateRange(startParam, endParam)) {
     return { start: startParam, end: endParam };
   }
   const startSaved = localStorage.getItem("bp_range_start");
@@ -213,6 +217,7 @@ export function App() {
   }, [active]);
 
   useEffect(() => {
+    if (!isValidDateRange(start, end)) return;
     localStorage.setItem("bp_range_start", start);
     localStorage.setItem("bp_range_end", end);
   }, [start, end]);
@@ -224,6 +229,7 @@ export function App() {
   }, [viewLinkMessage]);
 
   useEffect(() => {
+    if (!isValidDateRange(start, end)) return;
     const params = new URLSearchParams(window.location.search);
     params.set("tab", active);
     params.set("start", start);
@@ -237,7 +243,7 @@ export function App() {
     const onPopState = () => {
       const { tab, start: nextStart, end: nextEnd } = readUrlViewState();
       setActive(normalizeTab(tab));
-      if (nextStart && nextEnd && isIsoDate(nextStart) && isIsoDate(nextEnd) && nextStart <= nextEnd) {
+      if (nextStart && nextEnd && isValidDateRange(nextStart, nextEnd)) {
         setStart(nextStart);
         setEnd(nextEnd);
       }
