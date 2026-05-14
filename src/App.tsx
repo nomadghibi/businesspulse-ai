@@ -1215,6 +1215,12 @@ function Recommendations({
     localStorage.setItem("bp_recommendations_query", query);
   }, [priorityFilter, statusFilter, sortBy, query]);
 
+  useEffect(() => {
+    if (!actionMessage) return;
+    const timer = window.setTimeout(() => setActionMessage(null), 3500);
+    return () => window.clearTimeout(timer);
+  }, [actionMessage]);
+
   function clearRecommendationFilters() {
     setPriorityFilter("all");
     setStatusFilter("all");
