@@ -38,6 +38,7 @@ export function App() {
   const [start, setStart] = useState(dateDaysAgo(29));
   const [end, setEnd] = useState(dateDaysAgo(0));
   const [loading, setLoading] = useState(true);
+  const [refreshing, setRefreshing] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [authed, setAuthed] = useState(Boolean(localStorage.getItem("bp_token")));
   const [syncMessage, setSyncMessage] = useState<string>("");
@@ -48,8 +49,13 @@ export function App() {
   const [nextPassword, setNextPassword] = useState("");
   const [passwordMessage, setPasswordMessage] = useState("");
 
-  async function refresh() {
-    setLoading(true);
+  async function refresh(options?: { silent?: boolean }) {
+    const silent = options?.silent ?? false;
+    if (silent) {
+      setRefreshing(true);
+    } else {
+      setLoading(true);
+    }
     setError(null);
     try {
       const [orgRes, metricsRes, uploadsRes, reportsRes, recsRes, alertsRes, onboardingRes] = await Promise.all([
@@ -73,7 +79,11 @@ export function App() {
     } catch (err) {
       setError(err instanceof Error ? err.message : "Unable to load dashboard");
     } finally {
-      setLoading(false);
+      if (silent) {
+        setRefreshing(false);
+      } else {
+        setLoading(false);
+      }
     }
   }
 
@@ -84,6 +94,14 @@ export function App() {
   useEffect(() => {
     localStorage.setItem("bp_active_tab", active);
   }, [active]);
+
+  useEffect(() => {
+    if (!authed || mustChangePassword) return;
+    const interval = window.setInterval(() => {
+      void refresh({ silent: true });
+    }, 60_000);
+    return () => window.clearInterval(interval);
+  }, [authed, mustChangePassword, start, end]);
 
   const tabs = [
     ["dashboard", BarChart3, "Dashboard"],
@@ -126,6 +144,9 @@ export function App() {
           <div className="date-controls">
             <input type="date" value={start} onChange={(event) => setStart(event.target.value)} />
             <input type="date" value={end} onChange={(event) => setEnd(event.target.value)} />
+            <button onClick={() => void refresh({ silent: true })} disabled={refreshing}>
+              {refreshing ? "Refreshing..." : "Refresh"}
+            </button>
             <button onClick={async () => {
               try { await logout(); } catch {}
               clearToken();
