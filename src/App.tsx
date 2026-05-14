@@ -81,12 +81,13 @@ export function App() {
   const [lastUpdatedAt, setLastUpdatedAt] = useState<string | null>(null);
   const [refreshWarning, setRefreshWarning] = useState<string | null>(null);
   const refreshInFlight = useRef(false);
-  const activePreset = useMemo(() => {
+  const activePreset = useMemo<"7d" | "30d" | "90d" | "12m" | null>(() => {
     const today = dateDaysAgo(0);
     if (end !== today) return null;
     if (start === dateDaysAgo(6)) return "7d";
     if (start === dateDaysAgo(29)) return "30d";
     if (start === dateDaysAgo(89)) return "90d";
+    if (start === dateDaysAgo(364)) return "12m";
     return null;
   }, [start, end]);
   const [error, setError] = useState<string | null>(null);
@@ -300,7 +301,7 @@ export function App() {
             <button className={activePreset === "7d" ? "range-active" : ""} onClick={() => { const next = dateRangeDaysAgo(7); setStart(next.start); setEnd(next.end); }}>7d</button>
             <button className={activePreset === "30d" ? "range-active" : ""} onClick={() => { const next = dateRangeDaysAgo(30); setStart(next.start); setEnd(next.end); }}>30d</button>
             <button className={activePreset === "90d" ? "range-active" : ""} onClick={() => { const next = dateRangeDaysAgo(90); setStart(next.start); setEnd(next.end); }}>90d</button>
-            <button onClick={() => { const next = dateRangeDaysAgo(365); setStart(next.start); setEnd(next.end); }}>12m</button>
+            <button className={activePreset === "12m" ? "range-active" : ""} onClick={() => { const next = dateRangeDaysAgo(365); setStart(next.start); setEnd(next.end); }}>12m</button>
             <button onClick={() => { const next = alignRangeToToday(start, end); setStart(next.start); setEnd(next.end); }}>Today</button>
             <input aria-label="Start date" type="date" value={start} onChange={(event) => setStart(event.target.value)} />
             <input aria-label="End date" type="date" value={end} onChange={(event) => setEnd(event.target.value)} />
