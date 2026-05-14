@@ -439,6 +439,29 @@ function Dashboard({
   const setupScore = Math.max(0, Math.min(100, completionScore + qualityScore));
   const timeToFirstInsight = formatTimeToFirstInsight(onboarding?.timeToFirstInsightSeconds ?? null, onboarding?.firstUploadAt ?? null);
 
+  function exportKpisCsv() {
+    const lines = [
+      "metric_name,metric_value,metric_formatted,delta_pct",
+      ...metrics.cards.map((card) =>
+        [
+          escapeCsv(card.name),
+          String(card.value),
+          escapeCsv(card.formatted),
+          card.deltaPct == null ? "" : String(card.deltaPct)
+        ].join(",")
+      )
+    ];
+    const blob = new Blob([lines.join("\n")], { type: "text/csv;charset=utf-8" });
+    const url = URL.createObjectURL(blob);
+    const anchor = document.createElement("a");
+    anchor.href = url;
+    anchor.download = `kpi-snapshot-${metrics.period.start}-to-${metrics.period.end}.csv`;
+    document.body.appendChild(anchor);
+    anchor.click();
+    anchor.remove();
+    URL.revokeObjectURL(url);
+  }
+
   return (
     <div className="stack">
       <section className="panel setup-panel">
@@ -466,7 +489,10 @@ function Dashboard({
           })}
         </div>
         <p><strong>Time to first insight:</strong> {timeToFirstInsight}</p>
-        <button className="primary align-start" onClick={onOpenSources}>Go To Data Sources</button>
+        <div className="upload-row">
+          <button className="primary" onClick={onOpenSources}>Go To Data Sources</button>
+          <button onClick={exportKpisCsv}>Export KPI CSV</button>
+        </div>
       </section>
       <section className="brief">
         <div>
