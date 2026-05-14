@@ -64,6 +64,12 @@ function alignRangeToToday(start: string, end: string) {
   };
 }
 
+function dateWindowDays(start: string, end: string) {
+  const startDate = new Date(`${start}T00:00:00`);
+  const endDate = new Date(`${end}T00:00:00`);
+  return Math.max(1, Math.round((endDate.getTime() - startDate.getTime()) / (24 * 60 * 60 * 1000)) + 1);
+}
+
 export function App() {
   const initialRange = initialDateRange();
   const [org, setOrg] = useState<Organization | null>(null);
@@ -103,6 +109,7 @@ export function App() {
   const [askAutoRun, setAskAutoRun] = useState(false);
   const [showShortcuts, setShowShortcuts] = useState(false);
   const [shortcutsCopied, setShortcutsCopied] = useState(false);
+  const windowDays = useMemo(() => dateWindowDays(start, end), [start, end]);
 
   async function refresh(options?: { silent?: boolean }) {
     if (start > end) return;
@@ -296,6 +303,7 @@ export function App() {
             <h1>{org?.name ?? "Demo Home Services Co."}</h1>
             <p>Revenue, leads, jobs, conversion, and marketing performance.</p>
             <p>{lastUpdatedAt ? `Last updated ${formatLastUpdated(lastUpdatedAt)}` : "Last updated pending"}</p>
+            <p>Window: {windowDays} day{windowDays === 1 ? "" : "s"}</p>
           </div>
           <div className="date-controls">
             <button onClick={() => { const next = shiftDateRange(start, end, "backward"); setStart(next.start); setEnd(next.end); }}>Back 1 Period</button>
