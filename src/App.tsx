@@ -562,11 +562,16 @@ function escapeCsv(value: string) {
 }
 
 function AskAI({ start, end }: { start: string; end: string }) {
-  const [question, setQuestion] = useState("Why did revenue change in this period?");
+  const [question, setQuestion] = useState(() => localStorage.getItem("bp_ask_question") ?? "Why did revenue change in this period?");
   const [answer, setAnswer] = useState<AiAnswer | null>(null);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [copyMessage, setCopyMessage] = useState<string | null>(null);
   const normalizedQuestion = question.trim();
+
+  useEffect(() => {
+    localStorage.setItem("bp_ask_question", question);
+  }, [question]);
 
   async function submit() {
     if (normalizedQuestion.length < 3) return;
@@ -574,11 +579,24 @@ function AskAI({ start, end }: { start: string; end: string }) {
     setError(null);
     try {
       setAnswer(await askAi(normalizedQuestion, start, end));
+      setCopyMessage(null);
     } catch (err) {
       setError(err instanceof Error ? err.message : "Unable to get AI answer right now.");
     } finally {
       setLoading(false);
     }
+  }
+
+  async function copyAnswer() {
+    if (!answer) return;
+    const text = [
+      answer.directAnswer,
+      `Confidence: ${answer.confidence}`,
+      `Date range: ${answer.dateRange.start} to ${answer.dateRange.end}`,
+      `Recommended next action: ${answer.recommendedNextAction}`
+    ].join("\n");
+    await navigator.clipboard.writeText(text);
+    setCopyMessage("Answer copied.");
   }
 
   const suggestions = ["Why did revenue drop last week?", "Which lead source gives us the best customers?", "Are we spending too much on ads?"];
@@ -639,6 +657,13 @@ function AskAI({ start, end }: { start: string; end: string }) {
             ) : null}
           </Panel>
         </section>
+      ) : null}
+      {answer ? (
+        <div className="upload-row">
+          <button onClick={() => void copyAnswer()}>Copy Answer</button>
+          <button onClick={() => { setAnswer(null); setCopyMessage(null); }}>Clear Answer</button>
+          {copyMessage ? <span>{copyMessage}</span> : null}
+        </div>
       ) : null}
     </div>
   );
