@@ -71,6 +71,7 @@ export function App() {
   const [currentPassword, setCurrentPassword] = useState("");
   const [nextPassword, setNextPassword] = useState("");
   const [passwordMessage, setPasswordMessage] = useState("");
+  const [askSeed, setAskSeed] = useState("");
 
   async function refresh(options?: { silent?: boolean }) {
     if (start > end) return;
@@ -230,8 +231,8 @@ export function App() {
         {refreshWarning ? <div className="notice">{refreshWarning}</div> : null}
         {loading && !metrics ? <Loading /> : null}
 
-        {metrics && active === "dashboard" ? <Dashboard metrics={metrics} uploads={uploads} alerts={alerts} recommendations={recommendations} onboarding={onboarding} onOpenSources={() => setActive("sources")} /> : null}
-        {metrics && active === "ask" ? <AskAI start={start} end={end} /> : null}
+        {metrics && active === "dashboard" ? <Dashboard metrics={metrics} uploads={uploads} alerts={alerts} recommendations={recommendations} onboarding={onboarding} onOpenSources={() => setActive("sources")} onOpenAsk={(question) => { setAskSeed(question); setActive("ask"); }} /> : null}
+        {metrics && active === "ask" ? <AskAI start={start} end={end} seedQuestion={askSeed} /> : null}
         {active === "sources" ? <DataSources uploads={uploads} onboarding={onboarding} refresh={refresh} /> : null}
         {active === "reports" ? <Reports reports={reports} start={start} end={end} refresh={refresh} /> : null}
         {active === "recommendations" ? <Recommendations recommendations={recommendations} /> : null}
@@ -418,7 +419,8 @@ function Dashboard({
   alerts,
   recommendations,
   onboarding,
-  onOpenSources
+  onOpenSources,
+  onOpenAsk
 }: {
   metrics: MetricsResponse;
   uploads: FileUpload[];
@@ -426,6 +428,7 @@ function Dashboard({
   recommendations: Recommendation[];
   onboarding: OnboardingStatus | null;
   onOpenSources: () => void;
+  onOpenAsk: (question: string) => void;
 }) {
   const requiredDatasets: DatasetType[] = ["jobs", "leads", "revenue", "marketing_spend"];
   const latestByDataset = new Map<DatasetType, FileUpload>();
@@ -449,6 +452,7 @@ function Dashboard({
       freshness
     };
   });
+  const staleDatasets = freshnessRows.filter((row) => row.freshness === "stale" || row.freshness === "missing").map((row) => row.dataset);
 
   function exportKpisCsv() {
     const lines = [
@@ -503,6 +507,7 @@ function Dashboard({
         <div className="upload-row">
           <button className="primary" onClick={onOpenSources}>Go To Data Sources</button>
           <button onClick={exportKpisCsv}>Export KPI CSV</button>
+          {staleDatasets.length ? <button onClick={() => onOpenAsk(`Which actions should we take first to reduce risk from stale datasets: ${staleDatasets.join(", ")}?`)}>Investigate Staleness</button> : null}
         </div>
       </section>
       <section className="brief">
@@ -613,7 +618,7 @@ function escapeCsv(value: string) {
   return value;
 }
 
-function AskAI({ start, end }: { start: string; end: string }) {
+function AskAI({ start, end, seedQuestion }: { start: string; end: string; seedQuestion?: string }) {
   const [question, setQuestion] = useState(() => localStorage.getItem("bp_ask_question") ?? "Why did revenue change in this period?");
   const [answer, setAnswer] = useState<AiAnswer | null>(null);
   const [loading, setLoading] = useState(false);
@@ -624,6 +629,11 @@ function AskAI({ start, end }: { start: string; end: string }) {
   useEffect(() => {
     localStorage.setItem("bp_ask_question", question);
   }, [question]);
+
+  useEffect(() => {
+    if (!seedQuestion) return;
+    setQuestion(seedQuestion);
+  }, [seedQuestion]);
 
   async function submit() {
     if (normalizedQuestion.length < 3) return;
