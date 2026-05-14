@@ -482,6 +482,28 @@ function Dashboard({
     URL.revokeObjectURL(url);
   }
 
+  function exportDashboardSummaryCsv() {
+    const lines = [
+      "section,key,value",
+      `overview,operational_risk,${operationalRiskLevel}`,
+      `overview,stale_or_missing_core_datasets,${staleOrMissingCount}`,
+      `overview,quality_issues,${metrics.qualityIssues.length}`,
+      `overview,data_readiness_pct,${setupScore}`,
+      `overview,time_to_first_insight,${escapeCsv(timeToFirstInsight)}`,
+      ...metrics.cards.map((card) => `kpi,${escapeCsv(card.name)},${escapeCsv(card.formatted)}`),
+      ...freshnessRows.map((row) => `freshness,${row.dataset},${escapeCsv(`${row.status} (${row.updated})`)}`)
+    ];
+    const blob = new Blob([lines.join("\n")], { type: "text/csv;charset=utf-8" });
+    const url = URL.createObjectURL(blob);
+    const anchor = document.createElement("a");
+    anchor.href = url;
+    anchor.download = `dashboard-summary-${metrics.period.start}-to-${metrics.period.end}.csv`;
+    document.body.appendChild(anchor);
+    anchor.click();
+    anchor.remove();
+    URL.revokeObjectURL(url);
+  }
+
   return (
     <div className="stack">
       <section className={`notice risk-${operationalRiskLevel}`}>
@@ -521,6 +543,7 @@ function Dashboard({
         <div className="upload-row">
           <button className="primary" onClick={onOpenSources}>Go To Data Sources</button>
           <button onClick={exportKpisCsv}>Export KPI CSV</button>
+          <button onClick={exportDashboardSummaryCsv}>Export Dashboard Summary</button>
           {staleDatasets.length ? <button onClick={() => onOpenAsk(`Which actions should we take first to reduce risk from stale datasets: ${staleDatasets.join(", ")}?`)}>Investigate Staleness</button> : null}
         </div>
       </section>
