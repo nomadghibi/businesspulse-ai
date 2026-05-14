@@ -300,6 +300,7 @@ export function App() {
             <button className={activePreset === "7d" ? "range-active" : ""} onClick={() => { const next = dateRangeDaysAgo(7); setStart(next.start); setEnd(next.end); }}>7d</button>
             <button className={activePreset === "30d" ? "range-active" : ""} onClick={() => { const next = dateRangeDaysAgo(30); setStart(next.start); setEnd(next.end); }}>30d</button>
             <button className={activePreset === "90d" ? "range-active" : ""} onClick={() => { const next = dateRangeDaysAgo(90); setStart(next.start); setEnd(next.end); }}>90d</button>
+            <button onClick={() => { const next = dateRangeDaysAgo(365); setStart(next.start); setEnd(next.end); }}>12m</button>
             <button onClick={() => { const next = alignRangeToToday(start, end); setStart(next.start); setEnd(next.end); }}>Today</button>
             <input aria-label="Start date" type="date" value={start} onChange={(event) => setStart(event.target.value)} />
             <input aria-label="End date" type="date" value={end} onChange={(event) => setEnd(event.target.value)} />
