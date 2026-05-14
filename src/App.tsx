@@ -39,7 +39,14 @@ function isIsoDate(value: string) {
 }
 
 function isValidDateRange(start: string, end: string) {
-  return isIsoDate(start) && isIsoDate(end) && start <= end;
+  const today = dateDaysAgo(0);
+  return isIsoDate(start) && isIsoDate(end) && start <= end && start <= today && end <= today;
+}
+
+function clampDateToToday(value: string) {
+  if (!isIsoDate(value)) return value;
+  const today = dateDaysAgo(0);
+  return value > today ? today : value;
 }
 
 function readUrlViewState() {
@@ -426,8 +433,8 @@ export function App() {
             <button onClick={() => { const next = alignRangeToToday(start, end); setStart(next.start); setEnd(next.end); }}>Today</button>
             <button onClick={() => { const next = dateRangeDaysAgo(30); setStart(next.start); setEnd(next.end); }}>Reset 30d</button>
             <button onClick={() => void copyCurrentViewLink()}>Copy View Link</button>
-            <input aria-label="Start date" type="date" value={start} onChange={(event) => setStart(event.target.value)} />
-            <input aria-label="End date" type="date" value={end} onChange={(event) => setEnd(event.target.value)} />
+            <input aria-label="Start date" type="date" value={start} max={dateDaysAgo(0)} onChange={(event) => setStart(clampDateToToday(event.target.value))} />
+            <input aria-label="End date" type="date" value={end} max={dateDaysAgo(0)} onChange={(event) => setEnd(clampDateToToday(event.target.value))} />
             <button onClick={() => void refresh({ silent: true })} disabled={refreshing}>
               {refreshing ? "Refreshing..." : "Refresh"}
             </button>
