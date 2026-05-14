@@ -418,6 +418,7 @@ export function App() {
             <p>{lastUpdatedAt ? `Last updated ${formatLastUpdated(lastUpdatedAt)}` : "Last updated pending"}</p>
             <p>Window: {windowDays} day{windowDays === 1 ? "" : "s"}</p>
             {viewLinkMessage ? <p>{viewLinkMessage}</p> : null}
+            {hasInvalidRange ? <p>Please fix date range: start must be on or before end.</p> : null}
           </div>
           <div className="date-controls">
             <button onClick={() => { const next = shiftDateRangeWithoutFuture(start, end, "backward"); setStart(next.start); setEnd(next.end); }}>Back 1 Period</button>
@@ -433,7 +434,7 @@ export function App() {
             <button className={activePreset === "12m" ? "range-active" : ""} onClick={() => { const next = dateRangeDaysAgo(365); setStart(next.start); setEnd(next.end); }}>12m</button>
             <button onClick={() => { const next = alignRangeToToday(start, end); setStart(next.start); setEnd(next.end); }}>Today</button>
             <button onClick={() => { const next = dateRangeDaysAgo(30); setStart(next.start); setEnd(next.end); }}>Reset 30d</button>
-            <button onClick={() => void copyCurrentViewLink()}>Copy View Link</button>
+            <button onClick={() => void copyCurrentViewLink()} disabled={hasInvalidRange}>Copy View Link</button>
             <input aria-label="Start date" type="date" value={start} max={dateDaysAgo(0)} onChange={(event) => setStart(clampDateToToday(event.target.value))} />
             <input aria-label="End date" type="date" value={end} max={dateDaysAgo(0)} onChange={(event) => setEnd(clampDateToToday(event.target.value))} />
             <button onClick={() => void refresh({ silent: true })} disabled={refreshing || hasInvalidRange}>
