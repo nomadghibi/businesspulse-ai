@@ -270,6 +270,7 @@ export function App() {
             </button>
           ))}
         </nav>
+        <button className="shortcut-btn" onClick={() => setShowShortcuts(true)}>Shortcuts</button>
         <p className="sidebar-hint">Shortcuts: g then d/a/s/r, [ and ] for dates</p>
       </aside>
 
