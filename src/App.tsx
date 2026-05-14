@@ -1016,6 +1016,24 @@ function Settings({ onSync, syncMessage, users, onUsersChanged }: { onSync: () =
     localStorage.setItem("bp_users_query", userQuery);
     localStorage.setItem("bp_users_status_filter", statusFilter);
   }, [userQuery, statusFilter]);
+
+  function resetLocalPreferences() {
+    const keys = [
+      "bp_active_tab",
+      "bp_range_start",
+      "bp_range_end",
+      "bp_upload_history_dataset",
+      "bp_upload_history_status",
+      "bp_upload_history_sort",
+      "bp_reports_query",
+      "bp_reports_sort",
+      "bp_users_query",
+      "bp_users_status_filter",
+      "bp_ask_question"
+    ];
+    for (const key of keys) localStorage.removeItem(key);
+    window.location.reload();
+  }
   return (
     <div className="stack">
       <Panel title="Stripe Integration">
@@ -1101,6 +1119,12 @@ function Settings({ onSync, syncMessage, users, onUsersChanged }: { onSync: () =
           }}>Checkout Pro</button>
         </div>
         {billingMsg ? <p>{billingMsg}</p> : null}
+      </Panel>
+      <Panel title="Local Preferences">
+        <div className="stack">
+          <p>Reset saved filters, date ranges, and Ask AI draft for this browser session.</p>
+          <button className="align-start" onClick={resetLocalPreferences}>Reset Local Preferences</button>
+        </div>
       </Panel>
     </div>
   );
