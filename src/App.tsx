@@ -454,6 +454,9 @@ function Dashboard({
     };
   });
   const staleOrMissingCount = freshnessRows.filter((row) => row.freshness === "stale" || row.freshness === "missing").length;
+  const operationalRiskLevel =
+    staleOrMissingCount >= 2 || metrics.qualityIssues.length >= 3 ? "high" :
+    staleOrMissingCount >= 1 || metrics.qualityIssues.length >= 1 ? "medium" : "low";
   const staleDatasets = freshnessRows.filter((row) => row.freshness === "stale" || row.freshness === "missing").map((row) => row.dataset);
 
   function exportKpisCsv() {
@@ -481,6 +484,15 @@ function Dashboard({
 
   return (
     <div className="stack">
+      <section className={`notice risk-${operationalRiskLevel}`}>
+        <strong>Operational risk: {operationalRiskLevel}</strong>
+        <p>
+          {staleOrMissingCount} stale or missing core datasets, {metrics.qualityIssues.length} quality issues currently affecting reliability.
+        </p>
+        {(staleOrMissingCount > 0 || metrics.qualityIssues.length > 0) ? (
+          <button className="align-start" onClick={onOpenSources}>Resolve In Data Sources</button>
+        ) : null}
+      </section>
       <section className="panel setup-panel">
         <div className="setup-header">
           <div>

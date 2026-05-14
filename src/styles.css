@@ -319,6 +319,9 @@ textarea { min-height: 110px; width: 100%; resize: vertical; }
 .bullets { margin: 0; padding-left: 20px; color: #4a554f; line-height: 1.7; }
 .empty, .notice, .loading { padding: 18px; border-radius: 8px; background: #eef4f1; color: #43514a; }
 .error { background: #fff1ee; color: #9f352c; }
+.risk-low { background: #edf8f3; color: #1b5e4b; border: 1px solid #cce7dc; }
+.risk-medium { background: #fff8ea; color: #8a5a0a; border: 1px solid #f0dbac; }
+.risk-high { background: #fff1ee; color: #9f352c; border: 1px solid #f0c8c3; }
 .loading { display: flex; gap: 10px; align-items: center; }
 .spin { animation: spin 1s linear infinite; }
 @keyframes spin { to { transform: rotate(360deg); } }
