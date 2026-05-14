@@ -398,6 +398,21 @@ export function App() {
       const tagName = target?.tagName?.toLowerCase();
       const isTyping = tagName === "input" || tagName === "textarea" || tagName === "select" || target?.isContentEditable;
       if (isTyping) return;
+      if (!(event.shiftKey && event.key.toLowerCase() === "a")) return;
+      event.preventDefault();
+      setActive("ask");
+    };
+    window.addEventListener("keydown", onKeyDown);
+    return () => window.removeEventListener("keydown", onKeyDown);
+  }, [authed]);
+
+  useEffect(() => {
+    if (!authed) return;
+    const onKeyDown = (event: KeyboardEvent) => {
+      const target = event.target as HTMLElement | null;
+      const tagName = target?.tagName?.toLowerCase();
+      const isTyping = tagName === "input" || tagName === "textarea" || tagName === "select" || target?.isContentEditable;
+      if (isTyping) return;
       if (!(event.shiftKey && event.key.toLowerCase() === "t")) return;
       event.preventDefault();
       const next = alignRangeToToday(start, end);
@@ -677,6 +692,7 @@ export function App() {
               <li><code>Shift</code>+<code>L</code>: Toggle live refresh</li>
               <li><code>Shift</code>+<code>T</code>: Align range to today</li>
               <li><code>Shift</code>+<code>D</code>: Open dashboard</li>
+              <li><code>Shift</code>+<code>A</code>: Open Ask AI</li>
               <li><code>Shift</code>+<code>0</code>: Reset view defaults</li>
               <li><code>Ctrl/Cmd</code>+<code>Shift</code>+<code>C</code>: Copy view link</li>
               <li><code>?</code>: Toggle this help</li>
@@ -699,6 +715,7 @@ export function App() {
                   "Shift+L: Toggle live refresh",
                   "Shift+T: Align range to today",
                   "Shift+D: Open dashboard",
+                  "Shift+A: Open Ask AI",
                   "Shift+0: Reset view defaults",
                   "Ctrl/Cmd+Shift+C: Copy view link",
                   "?: Toggle shortcuts help",
