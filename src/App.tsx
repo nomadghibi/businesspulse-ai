@@ -50,6 +50,20 @@ function shiftDateRange(start: string, end: string, direction: "backward" | "for
   };
 }
 
+function alignRangeToToday(start: string, end: string) {
+  const startDate = new Date(`${start}T00:00:00`);
+  const endDate = new Date(`${end}T00:00:00`);
+  const spanDays = Math.max(1, Math.round((endDate.getTime() - startDate.getTime()) / (24 * 60 * 60 * 1000)) + 1);
+  const today = new Date();
+  const nextEnd = new Date(Date.UTC(today.getUTCFullYear(), today.getUTCMonth(), today.getUTCDate()));
+  const nextStart = new Date(nextEnd);
+  nextStart.setUTCDate(nextStart.getUTCDate() - (spanDays - 1));
+  return {
+    start: nextStart.toISOString().slice(0, 10),
+    end: nextEnd.toISOString().slice(0, 10)
+  };
+}
+
 export function App() {
   const initialRange = initialDateRange();
   const [org, setOrg] = useState<Organization | null>(null);
@@ -286,6 +300,7 @@ export function App() {
             <button className={activePreset === "7d" ? "range-active" : ""} onClick={() => { const next = dateRangeDaysAgo(7); setStart(next.start); setEnd(next.end); }}>7d</button>
             <button className={activePreset === "30d" ? "range-active" : ""} onClick={() => { const next = dateRangeDaysAgo(30); setStart(next.start); setEnd(next.end); }}>30d</button>
             <button className={activePreset === "90d" ? "range-active" : ""} onClick={() => { const next = dateRangeDaysAgo(90); setStart(next.start); setEnd(next.end); }}>90d</button>
+            <button onClick={() => { const next = alignRangeToToday(start, end); setStart(next.start); setEnd(next.end); }}>Today</button>
             <input aria-label="Start date" type="date" value={start} onChange={(event) => setStart(event.target.value)} />
             <input aria-label="End date" type="date" value={end} onChange={(event) => setEnd(event.target.value)} />
             <button onClick={() => void refresh({ silent: true })} disabled={refreshing}>
