@@ -39,6 +39,7 @@ export function App() {
   const [end, setEnd] = useState(dateDaysAgo(0));
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
+  const [lastUpdatedAt, setLastUpdatedAt] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [authed, setAuthed] = useState(Boolean(localStorage.getItem("bp_token")));
   const [syncMessage, setSyncMessage] = useState<string>("");
@@ -76,6 +77,7 @@ export function App() {
       setAlerts(alertsRes);
       setOnboarding(onboardingRes);
       setUsers(usersRes);
+      setLastUpdatedAt(new Date().toISOString());
     } catch (err) {
       setError(err instanceof Error ? err.message : "Unable to load dashboard");
     } finally {
@@ -140,6 +142,7 @@ export function App() {
           <div>
             <h1>{org?.name ?? "Demo Home Services Co."}</h1>
             <p>Revenue, leads, jobs, conversion, and marketing performance.</p>
+            <p>{lastUpdatedAt ? `Last updated ${formatLastUpdated(lastUpdatedAt)}` : "Last updated pending"}</p>
           </div>
           <div className="date-controls">
             <input type="date" value={start} onChange={(event) => setStart(event.target.value)} />
@@ -487,6 +490,17 @@ function formatTimeToFirstInsight(seconds: number | null, firstUploadAt: string 
   }
   if (firstUploadAt) return "In progress";
   return "Not started";
+}
+
+function formatLastUpdated(iso: string) {
+  const updated = new Date(iso);
+  const deltaSeconds = Math.max(0, Math.floor((Date.now() - updated.getTime()) / 1000));
+  if (deltaSeconds < 5) return "just now";
+  if (deltaSeconds < 60) return `${deltaSeconds}s ago`;
+  const deltaMinutes = Math.floor(deltaSeconds / 60);
+  if (deltaMinutes < 60) return `${deltaMinutes}m ago`;
+  const deltaHours = Math.floor(deltaMinutes / 60);
+  return `${deltaHours}h ago`;
 }
 
 function AskAI({ start, end }: { start: string; end: string }) {
