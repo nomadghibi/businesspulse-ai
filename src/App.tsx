@@ -295,6 +295,24 @@ export function App() {
       const tagName = target?.tagName?.toLowerCase();
       const isTyping = tagName === "input" || tagName === "textarea" || tagName === "select" || target?.isContentEditable;
       if (isTyping) return;
+      if (!["1", "2", "3", "4"].includes(event.key)) return;
+      event.preventDefault();
+      const map: Record<string, number> = { "1": 7, "2": 30, "3": 90, "4": 365 };
+      const next = dateRangeDaysAgo(map[event.key]);
+      setStart(next.start);
+      setEnd(next.end);
+    };
+    window.addEventListener("keydown", onKeyDown);
+    return () => window.removeEventListener("keydown", onKeyDown);
+  }, [authed]);
+
+  useEffect(() => {
+    if (!authed) return;
+    const onKeyDown = (event: KeyboardEvent) => {
+      const target = event.target as HTMLElement | null;
+      const tagName = target?.tagName?.toLowerCase();
+      const isTyping = tagName === "input" || tagName === "textarea" || tagName === "select" || target?.isContentEditable;
+      if (isTyping) return;
       if (event.key === "?") {
         event.preventDefault();
         setShowShortcuts((prev) => !prev);
@@ -336,7 +354,7 @@ export function App() {
           ))}
         </nav>
         <button className="shortcut-btn" onClick={() => setShowShortcuts(true)}>Shortcuts</button>
-        <p className="sidebar-hint">Shortcuts: g then d/a/s/r, [ and ] for dates</p>
+        <p className="sidebar-hint">Shortcuts: g then d/a/s/r, [ ] shift, 1-4 presets</p>
       </aside>
 
       <section className="workspace">
@@ -418,6 +436,7 @@ export function App() {
               <li><code>g</code> then <code>s</code>: Data Sources</li>
               <li><code>g</code> then <code>r</code>: Recommendations</li>
               <li><code>[</code> and <code>]</code>: Shift date window</li>
+              <li><code>1</code>/<code>2</code>/<code>3</code>/<code>4</code>: 7d/30d/90d/12m presets</li>
               <li><code>?</code>: Toggle this help</li>
               <li><code>Esc</code>: Close this help</li>
             </ul>
@@ -430,6 +449,7 @@ export function App() {
                   "g then s: Data Sources",
                   "g then r: Recommendations",
                   "[ and ]: Shift date window",
+                  "1/2/3/4: 7d/30d/90d/12m presets",
                   "?: Toggle shortcuts help",
                   "Esc: Close shortcuts help"
                 ].join("\n");
