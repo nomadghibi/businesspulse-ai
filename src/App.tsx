@@ -161,6 +161,7 @@ export function App() {
   const windowDays = useMemo(() => dateWindowDays(start, end), [start, end]);
   const forwardEnabled = useMemo(() => canShiftForward(end), [end]);
   const hasInvalidRange = start > end;
+  const todayAligned = useMemo(() => alignRangeToToday(start, end).end === end, [start, end]);
 
   function normalizeDateRangeForRefresh() {
     if (!hasInvalidRange) return { start, end };
@@ -451,12 +452,12 @@ export function App() {
             >
               Forward 1 Period
             </button>
-            <button className={activePreset === "7d" ? "range-active" : ""} onClick={() => { const next = dateRangeDaysAgo(7); setStart(next.start); setEnd(next.end); }}>7d</button>
-            <button className={activePreset === "30d" ? "range-active" : ""} onClick={() => { const next = dateRangeDaysAgo(30); setStart(next.start); setEnd(next.end); }}>30d</button>
-            <button className={activePreset === "90d" ? "range-active" : ""} onClick={() => { const next = dateRangeDaysAgo(90); setStart(next.start); setEnd(next.end); }}>90d</button>
-            <button className={activePreset === "12m" ? "range-active" : ""} onClick={() => { const next = dateRangeDaysAgo(365); setStart(next.start); setEnd(next.end); }}>12m</button>
-            <button onClick={() => { const next = alignRangeToToday(start, end); setStart(next.start); setEnd(next.end); }}>Today</button>
-            <button onClick={() => { const next = dateRangeDaysAgo(30); setStart(next.start); setEnd(next.end); }}>Reset 30d</button>
+            <button className={activePreset === "7d" ? "range-active" : ""} disabled={activePreset === "7d"} onClick={() => { const next = dateRangeDaysAgo(7); setStart(next.start); setEnd(next.end); }}>7d</button>
+            <button className={activePreset === "30d" ? "range-active" : ""} disabled={activePreset === "30d"} onClick={() => { const next = dateRangeDaysAgo(30); setStart(next.start); setEnd(next.end); }}>30d</button>
+            <button className={activePreset === "90d" ? "range-active" : ""} disabled={activePreset === "90d"} onClick={() => { const next = dateRangeDaysAgo(90); setStart(next.start); setEnd(next.end); }}>90d</button>
+            <button className={activePreset === "12m" ? "range-active" : ""} disabled={activePreset === "12m"} onClick={() => { const next = dateRangeDaysAgo(365); setStart(next.start); setEnd(next.end); }}>12m</button>
+            <button disabled={todayAligned} onClick={() => { const next = alignRangeToToday(start, end); setStart(next.start); setEnd(next.end); }}>Today</button>
+            <button disabled={activePreset === "30d"} onClick={() => { const next = dateRangeDaysAgo(30); setStart(next.start); setEnd(next.end); }}>Reset 30d</button>
             <button onClick={() => void copyCurrentViewLink()} disabled={hasInvalidRange}>Copy View Link</button>
             <input
               aria-label="Start date"
