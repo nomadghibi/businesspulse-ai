@@ -78,6 +78,14 @@ function shiftDateRange(start: string, end: string, direction: "backward" | "for
   };
 }
 
+function shiftDateRangeWithoutFuture(start: string, end: string, direction: "backward" | "forward") {
+  const next = shiftDateRange(start, end, direction);
+  if (direction === "backward") return next;
+  const today = dateDaysAgo(0);
+  if (next.end <= today) return next;
+  return alignRangeToToday(start, end);
+}
+
 function alignRangeToToday(start: string, end: string) {
   const startDate = new Date(`${start}T00:00:00`);
   const endDate = new Date(`${end}T00:00:00`);
@@ -315,7 +323,7 @@ export function App() {
       if (event.key !== "[" && event.key !== "]") return;
       event.preventDefault();
       if (event.key === "]" && !canShiftForward(end)) return;
-      const next = shiftDateRange(start, end, event.key === "[" ? "backward" : "forward");
+      const next = shiftDateRangeWithoutFuture(start, end, event.key === "[" ? "backward" : "forward");
       setStart(next.start);
       setEnd(next.end);
     };
@@ -404,9 +412,9 @@ export function App() {
             {viewLinkMessage ? <p>{viewLinkMessage}</p> : null}
           </div>
           <div className="date-controls">
-            <button onClick={() => { const next = shiftDateRange(start, end, "backward"); setStart(next.start); setEnd(next.end); }}>Back 1 Period</button>
+            <button onClick={() => { const next = shiftDateRangeWithoutFuture(start, end, "backward"); setStart(next.start); setEnd(next.end); }}>Back 1 Period</button>
             <button
-              onClick={() => { const next = shiftDateRange(start, end, "forward"); setStart(next.start); setEnd(next.end); }}
+              onClick={() => { const next = shiftDateRangeWithoutFuture(start, end, "forward"); setStart(next.start); setEnd(next.end); }}
               disabled={!forwardEnabled}
             >
               Forward 1 Period
