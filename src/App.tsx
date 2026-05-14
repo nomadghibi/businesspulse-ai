@@ -883,8 +883,10 @@ function DataSources({
 
 function Reports({ reports, start, end, refresh }: { reports: Report[]; start: string; end: string; refresh: () => Promise<void> }) {
   const [busy, setBusy] = useState(false);
-  const [query, setQuery] = useState("");
-  const [sort, setSort] = useState<"newest" | "oldest">("newest");
+  const [query, setQuery] = useState(() => localStorage.getItem("bp_reports_query") ?? "");
+  const [sort, setSort] = useState<"newest" | "oldest">(
+    () => (localStorage.getItem("bp_reports_sort") as "newest" | "oldest") ?? "newest"
+  );
   const filtered = reports.filter((report) => {
     const q = query.trim().toLowerCase();
     if (!q) return true;
@@ -895,6 +897,11 @@ function Reports({ reports, start, end, refresh }: { reports: Report[]; start: s
     const bTs = Date.parse(b.createdAt);
     return sort === "oldest" ? aTs - bTs : bTs - aTs;
   });
+
+  useEffect(() => {
+    localStorage.setItem("bp_reports_query", query);
+    localStorage.setItem("bp_reports_sort", sort);
+  }, [query, sort]);
   async function create() {
     setBusy(true);
     try {
@@ -964,8 +971,10 @@ function Settings({ onSync, syncMessage, users, onUsersChanged }: { onSync: () =
   const [invitePassword, setInvitePassword] = useState("changeme123");
   const [busy, setBusy] = useState(false);
   const [billingMsg, setBillingMsg] = useState("");
-  const [userQuery, setUserQuery] = useState("");
-  const [statusFilter, setStatusFilter] = useState<"all" | "active" | "disabled">("all");
+  const [userQuery, setUserQuery] = useState(() => localStorage.getItem("bp_users_query") ?? "");
+  const [statusFilter, setStatusFilter] = useState<"all" | "active" | "disabled">(
+    () => (localStorage.getItem("bp_users_status_filter") as "all" | "active" | "disabled") ?? "all"
+  );
   const roleCounts = users.reduce<Record<string, number>>((acc, user) => {
     acc[user.role] = (acc[user.role] ?? 0) + 1;
     return acc;
@@ -976,6 +985,11 @@ function Settings({ onSync, syncMessage, users, onUsersChanged }: { onSync: () =
     const statusMatch = statusFilter === "all" || (statusFilter === "active" ? !user.disabled : user.disabled);
     return queryMatch && statusMatch;
   });
+
+  useEffect(() => {
+    localStorage.setItem("bp_users_query", userQuery);
+    localStorage.setItem("bp_users_status_filter", statusFilter);
+  }, [userQuery, statusFilter]);
   return (
     <div className="stack">
       <Panel title="Stripe Integration">
