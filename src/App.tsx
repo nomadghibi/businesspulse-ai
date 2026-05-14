@@ -308,6 +308,7 @@ export function App() {
   useEffect(() => {
     if (!authed || mustChangePassword || !liveRefreshEnabled) return;
     const interval = window.setInterval(() => {
+      if (document.hidden) return;
       void refresh({ silent: true });
     }, 60_000);
     return () => window.clearInterval(interval);
