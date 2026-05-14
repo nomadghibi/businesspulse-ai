@@ -398,6 +398,21 @@ export function App() {
       const tagName = target?.tagName?.toLowerCase();
       const isTyping = tagName === "input" || tagName === "textarea" || tagName === "select" || target?.isContentEditable;
       if (isTyping) return;
+      if (!(event.shiftKey && event.key.toLowerCase() === "p")) return;
+      event.preventDefault();
+      setActive("reports");
+    };
+    window.addEventListener("keydown", onKeyDown);
+    return () => window.removeEventListener("keydown", onKeyDown);
+  }, [authed]);
+
+  useEffect(() => {
+    if (!authed) return;
+    const onKeyDown = (event: KeyboardEvent) => {
+      const target = event.target as HTMLElement | null;
+      const tagName = target?.tagName?.toLowerCase();
+      const isTyping = tagName === "input" || tagName === "textarea" || tagName === "select" || target?.isContentEditable;
+      if (isTyping) return;
       if (!(event.shiftKey && event.key.toLowerCase() === "s")) return;
       event.preventDefault();
       setActive("sources");
@@ -709,6 +724,7 @@ export function App() {
               <li><code>Shift</code>+<code>D</code>: Open dashboard</li>
               <li><code>Shift</code>+<code>A</code>: Open Ask AI</li>
               <li><code>Shift</code>+<code>S</code>: Open Data Sources</li>
+              <li><code>Shift</code>+<code>P</code>: Open Reports</li>
               <li><code>Shift</code>+<code>0</code>: Reset view defaults</li>
               <li><code>Ctrl/Cmd</code>+<code>Shift</code>+<code>C</code>: Copy view link</li>
               <li><code>?</code>: Toggle this help</li>
@@ -733,6 +749,7 @@ export function App() {
                   "Shift+D: Open dashboard",
                   "Shift+A: Open Ask AI",
                   "Shift+S: Open Data Sources",
+                  "Shift+P: Open Reports",
                   "Shift+0: Reset view defaults",
                   "Ctrl/Cmd+Shift+C: Copy view link",
                   "?: Toggle shortcuts help",
