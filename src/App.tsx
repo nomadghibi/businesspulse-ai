@@ -652,8 +652,15 @@ function DataSources({
   const [preview, setPreview] = useState<CsvPreview | null>(null);
   const [mappingDraft, setMappingDraft] = useState<Record<string, string>>({});
   const [message, setMessage] = useState("");
-  const [historyDatasetFilter, setHistoryDatasetFilter] = useState<DatasetType | "all">("all");
-  const [historyStatusFilter, setHistoryStatusFilter] = useState<FileUpload["status"] | "all">("all");
+  const [historyDatasetFilter, setHistoryDatasetFilter] = useState<DatasetType | "all">(
+    () => (localStorage.getItem("bp_upload_history_dataset") as DatasetType | "all") ?? "all"
+  );
+  const [historyStatusFilter, setHistoryStatusFilter] = useState<FileUpload["status"] | "all">(
+    () => (localStorage.getItem("bp_upload_history_status") as FileUpload["status"] | "all") ?? "all"
+  );
+  const [historySort, setHistorySort] = useState<"newest" | "oldest" | "rows_desc" | "rows_asc">(
+    () => (localStorage.getItem("bp_upload_history_sort") as "newest" | "oldest" | "rows_desc" | "rows_asc") ?? "newest"
+  );
   const requiredDatasets: DatasetType[] = ["jobs", "leads", "revenue", "marketing_spend"];
   const latestByDataset = new Map<DatasetType, FileUpload>();
   for (const upload of uploads) {
@@ -667,6 +674,19 @@ function DataSources({
     const statusMatch = historyStatusFilter === "all" || upload.status === historyStatusFilter;
     return datasetMatch && statusMatch;
   });
+  const sortedUploads = [...filteredUploads].sort((a, b) => {
+    if (historySort === "rows_desc") return b.rowCount - a.rowCount;
+    if (historySort === "rows_asc") return a.rowCount - b.rowCount;
+    const aTs = Date.parse(a.createdAt);
+    const bTs = Date.parse(b.createdAt);
+    return historySort === "oldest" ? aTs - bTs : bTs - aTs;
+  });
+
+  useEffect(() => {
+    localStorage.setItem("bp_upload_history_dataset", historyDatasetFilter);
+    localStorage.setItem("bp_upload_history_status", historyStatusFilter);
+    localStorage.setItem("bp_upload_history_sort", historySort);
+  }, [historyDatasetFilter, historyStatusFilter, historySort]);
 
   async function onFile(file: File | null) {
     if (!file) return;
@@ -779,11 +799,17 @@ function DataSources({
             <option value="mapped">Mapped</option>
             <option value="failed">Failed</option>
           </select>
+          <select value={historySort} onChange={(event) => setHistorySort(event.target.value as "newest" | "oldest" | "rows_desc" | "rows_asc")}>
+            <option value="newest">Newest first</option>
+            <option value="oldest">Oldest first</option>
+            <option value="rows_desc">Rows high to low</option>
+            <option value="rows_asc">Rows low to high</option>
+          </select>
           <span>{filteredUploads.length} of {uploads.length} shown</span>
         </div>
         <div className="table">
           <div className="table-head"><span>File</span><span>Dataset</span><span>Rows</span><span>Status</span></div>
-          {filteredUploads.map((upload) => (
+          {sortedUploads.map((upload) => (
             <div className="table-row" key={upload.id}>
               <span>{upload.filename}</span>
               <span>{upload.datasetType}</span>
