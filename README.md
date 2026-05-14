@@ -72,6 +72,10 @@ npm run build
 npm test
 ```
 
+Client reliability behavior:
+- Frontend API requests use a 15s timeout.
+- Read-only requests (`GET`) retry once on timeout or transient network failure.
+
 ## Conversion And Analytics
 
 - Trial capture endpoint: `POST /api/public/trial-start`
