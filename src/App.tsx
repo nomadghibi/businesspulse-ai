@@ -574,6 +574,12 @@ export function App() {
 
         {error ? <div className="notice error">{error}</div> : null}
         {refreshWarning ? <div className="notice">{refreshWarning}</div> : null}
+        {!liveRefreshEnabled ? (
+          <div className="notice">
+            Live refresh is off.
+            <button className="align-start" onClick={() => setLiveRefreshEnabled(true)}>Turn On Live Refresh</button>
+          </div>
+        ) : null}
         {loading && !metrics ? <Loading /> : null}
 
         {metrics && active === "dashboard" ? <Dashboard metrics={metrics} uploads={uploads} alerts={alerts} recommendations={recommendations} onboarding={onboarding} onOpenSources={(dataset) => {
