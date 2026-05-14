@@ -1181,6 +1181,9 @@ function Recommendations({
   const [statusFilter, setStatusFilter] = useState<"all" | "new" | "accepted" | "rejected" | "completed" | "dismissed">(
     () => (localStorage.getItem("bp_recommendations_status") as "all" | "new" | "accepted" | "rejected" | "completed" | "dismissed") ?? "all"
   );
+  const [sortBy, setSortBy] = useState<"updated_desc" | "updated_asc" | "priority_desc" | "priority_asc">(
+    () => (localStorage.getItem("bp_recommendations_sort") as "updated_desc" | "updated_asc" | "priority_desc" | "priority_asc") ?? "updated_desc"
+  );
   const [query, setQuery] = useState(() => localStorage.getItem("bp_recommendations_query") ?? "");
   const filtered = recommendations.filter((rec) => {
     const byPriority = priorityFilter === "all" || rec.priority === priorityFilter;
@@ -1193,16 +1196,25 @@ function Recommendations({
     acc[rec.status] = (acc[rec.status] ?? 0) + 1;
     return acc;
   }, {});
+  const priorityRank: Record<string, number> = { high: 3, medium: 2, low: 1 };
+  const sorted = [...filtered].sort((a, b) => {
+    if (sortBy === "updated_desc") return Date.parse(b.updatedAt) - Date.parse(a.updatedAt);
+    if (sortBy === "updated_asc") return Date.parse(a.updatedAt) - Date.parse(b.updatedAt);
+    if (sortBy === "priority_desc") return (priorityRank[b.priority] ?? 0) - (priorityRank[a.priority] ?? 0);
+    return (priorityRank[a.priority] ?? 0) - (priorityRank[b.priority] ?? 0);
+  });
 
   useEffect(() => {
     localStorage.setItem("bp_recommendations_priority", priorityFilter);
     localStorage.setItem("bp_recommendations_status", statusFilter);
+    localStorage.setItem("bp_recommendations_sort", sortBy);
     localStorage.setItem("bp_recommendations_query", query);
-  }, [priorityFilter, statusFilter, query]);
+  }, [priorityFilter, statusFilter, sortBy, query]);
 
   function clearRecommendationFilters() {
     setPriorityFilter("all");
     setStatusFilter("all");
+    setSortBy("updated_desc");
     setQuery("");
   }
 
@@ -1248,13 +1260,19 @@ function Recommendations({
           <option value="completed">Completed</option>
           <option value="rejected">Rejected</option>
         </select>
+        <select value={sortBy} onChange={(event) => setSortBy(event.target.value as "updated_desc" | "updated_asc" | "priority_desc" | "priority_asc")}>
+          <option value="updated_desc">Recently updated</option>
+          <option value="updated_asc">Oldest updated</option>
+          <option value="priority_desc">Priority high to low</option>
+          <option value="priority_asc">Priority low to high</option>
+        </select>
         <input value={query} onChange={(event) => setQuery(event.target.value)} placeholder="Search recommendations" />
         <button onClick={clearRecommendationFilters}>Clear Filters</button>
         <button onClick={exportRecommendationsCsv} disabled={!filtered.length}>Export CSV</button>
         <span>{filtered.length} of {recommendations.length} shown</span>
       </div>
       <div className="list">
-        {filtered.map((rec) => (
+        {sorted.map((rec) => (
           <div key={rec.id} className="stack">
             <StatusItem title={rec.title} meta={rec.priority} body={`${rec.description} Expected impact: ${rec.expectedImpact}`} />
             <button className="align-start" onClick={() => onUseInAsk(`How should we execute this recommendation first: ${rec.title}? Context: ${rec.description}. Expected impact: ${rec.expectedImpact}.`)}>
