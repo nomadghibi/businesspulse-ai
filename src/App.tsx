@@ -26,7 +26,17 @@ function dateDaysAgo(days: number) {
   return date.toISOString().slice(0, 10);
 }
 
+function isIsoDate(value: string) {
+  return /^\d{4}-\d{2}-\d{2}$/.test(value);
+}
+
 function initialDateRange() {
+  const params = new URLSearchParams(window.location.search);
+  const startParam = params.get("start");
+  const endParam = params.get("end");
+  if (startParam && endParam && isIsoDate(startParam) && isIsoDate(endParam) && startParam <= endParam) {
+    return { start: startParam, end: endParam };
+  }
   const startSaved = localStorage.getItem("bp_range_start");
   const endSaved = localStorage.getItem("bp_range_end");
   if (startSaved && endSaved) return { start: startSaved, end: endSaved };
@@ -72,6 +82,8 @@ function dateWindowDays(start: string, end: string) {
 
 export function App() {
   const initialRange = initialDateRange();
+  const initialTabFromUrl = new URLSearchParams(window.location.search).get("tab");
+  const allowedTabs = new Set(["dashboard", "sources", "ask", "reports", "recommendations", "users", "settings"]);
   const [org, setOrg] = useState<Organization | null>(null);
   const [metrics, setMetrics] = useState<MetricsResponse | null>(null);
   const [uploads, setUploads] = useState<FileUpload[]>([]);
@@ -79,7 +91,10 @@ export function App() {
   const [onboarding, setOnboarding] = useState<OnboardingStatus | null>(null);
   const [recommendations, setRecommendations] = useState<Recommendation[]>([]);
   const [alerts, setAlerts] = useState<Array<{ title: string; severity: string; description: string }>>([]);
-  const [active, setActive] = useState(() => localStorage.getItem("bp_active_tab") ?? "dashboard");
+  const [active, setActive] = useState(() => {
+    if (initialTabFromUrl && allowedTabs.has(initialTabFromUrl)) return initialTabFromUrl;
+    return localStorage.getItem("bp_active_tab") ?? "dashboard";
+  });
   const [start, setStart] = useState(initialRange.start);
   const [end, setEnd] = useState(initialRange.end);
   const [loading, setLoading] = useState(true);
@@ -181,6 +196,16 @@ export function App() {
     localStorage.setItem("bp_range_start", start);
     localStorage.setItem("bp_range_end", end);
   }, [start, end]);
+
+  useEffect(() => {
+    const params = new URLSearchParams(window.location.search);
+    params.set("tab", active);
+    params.set("start", start);
+    params.set("end", end);
+    const nextQuery = params.toString();
+    const nextUrl = `${window.location.pathname}?${nextQuery}${window.location.hash}`;
+    window.history.replaceState({}, "", nextUrl);
+  }, [active, start, end]);
 
   useEffect(() => {
     if (!authed || mustChangePassword) return;
