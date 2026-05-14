@@ -98,6 +98,10 @@ function dateWindowDays(start: string, end: string) {
   return Math.max(1, Math.round((endDate.getTime() - startDate.getTime()) / (24 * 60 * 60 * 1000)) + 1);
 }
 
+function canShiftForward(end: string) {
+  return end < dateDaysAgo(0);
+}
+
 export function App() {
   const initialRange = initialDateRange();
   const initialTabFromUrl = readUrlViewState().tab;
@@ -140,6 +144,7 @@ export function App() {
   const [shortcutsCopied, setShortcutsCopied] = useState(false);
   const [viewLinkMessage, setViewLinkMessage] = useState<string | null>(null);
   const windowDays = useMemo(() => dateWindowDays(start, end), [start, end]);
+  const forwardEnabled = useMemo(() => canShiftForward(end), [end]);
 
   async function copyCurrentViewLink() {
     try {
@@ -309,6 +314,7 @@ export function App() {
       if (isTyping) return;
       if (event.key !== "[" && event.key !== "]") return;
       event.preventDefault();
+      if (event.key === "]" && !canShiftForward(end)) return;
       const next = shiftDateRange(start, end, event.key === "[" ? "backward" : "forward");
       setStart(next.start);
       setEnd(next.end);
@@ -399,7 +405,12 @@ export function App() {
           </div>
           <div className="date-controls">
             <button onClick={() => { const next = shiftDateRange(start, end, "backward"); setStart(next.start); setEnd(next.end); }}>Back 1 Period</button>
-            <button onClick={() => { const next = shiftDateRange(start, end, "forward"); setStart(next.start); setEnd(next.end); }}>Forward 1 Period</button>
+            <button
+              onClick={() => { const next = shiftDateRange(start, end, "forward"); setStart(next.start); setEnd(next.end); }}
+              disabled={!forwardEnabled}
+            >
+              Forward 1 Period
+            </button>
             <button className={activePreset === "7d" ? "range-active" : ""} onClick={() => { const next = dateRangeDaysAgo(7); setStart(next.start); setEnd(next.end); }}>7d</button>
             <button className={activePreset === "30d" ? "range-active" : ""} onClick={() => { const next = dateRangeDaysAgo(30); setStart(next.start); setEnd(next.end); }}>30d</button>
             <button className={activePreset === "90d" ? "range-active" : ""} onClick={() => { const next = dateRangeDaysAgo(90); setStart(next.start); setEnd(next.end); }}>90d</button>
