@@ -832,7 +832,9 @@ function DataSources({
   onboarding: OnboardingStatus | null;
   refresh: () => Promise<void>;
 }) {
-  const [datasetType, setDatasetType] = useState<DatasetType>("jobs");
+  const [datasetType, setDatasetType] = useState<DatasetType>(
+    () => (localStorage.getItem("bp_sources_dataset_type") as DatasetType) ?? "jobs"
+  );
   const [busy, setBusy] = useState(false);
   const [pendingFile, setPendingFile] = useState<File | null>(null);
   const [preview, setPreview] = useState<CsvPreview | null>(null);
@@ -884,6 +886,14 @@ function DataSources({
     localStorage.setItem("bp_upload_history_status", historyStatusFilter);
     localStorage.setItem("bp_upload_history_sort", historySort);
   }, [historyDatasetFilter, historyStatusFilter, historySort]);
+
+  useEffect(() => {
+    localStorage.setItem("bp_sources_dataset_type", datasetType);
+    setPendingFile(null);
+    setPreview(null);
+    setMappingDraft({});
+    setMessage("");
+  }, [datasetType]);
 
   function clearHistoryFilters() {
     setHistoryDatasetFilter("all");
