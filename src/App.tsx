@@ -558,13 +558,17 @@ function AskAI({ start, end }: { start: string; end: string }) {
   const [question, setQuestion] = useState("Why did revenue change in this period?");
   const [answer, setAnswer] = useState<AiAnswer | null>(null);
   const [loading, setLoading] = useState(false);
+  const [error, setError] = useState<string | null>(null);
   const normalizedQuestion = question.trim();
 
   async function submit() {
     if (normalizedQuestion.length < 3) return;
     setLoading(true);
+    setError(null);
     try {
       setAnswer(await askAi(normalizedQuestion, start, end));
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Unable to get AI answer right now.");
     } finally {
       setLoading(false);
     }
@@ -592,6 +596,7 @@ function AskAI({ start, end }: { start: string; end: string }) {
         <div className="chips">
           {suggestions.map((item) => <button key={item} onClick={() => setQuestion(item)}>{item}</button>)}
         </div>
+        {error ? <div className="notice error">{error}</div> : null}
       </Panel>
       {answer ? (
         <section className="answer">
@@ -647,6 +652,8 @@ function DataSources({
   const [preview, setPreview] = useState<CsvPreview | null>(null);
   const [mappingDraft, setMappingDraft] = useState<Record<string, string>>({});
   const [message, setMessage] = useState("");
+  const [historyDatasetFilter, setHistoryDatasetFilter] = useState<DatasetType | "all">("all");
+  const [historyStatusFilter, setHistoryStatusFilter] = useState<FileUpload["status"] | "all">("all");
   const requiredDatasets: DatasetType[] = ["jobs", "leads", "revenue", "marketing_spend"];
   const latestByDataset = new Map<DatasetType, FileUpload>();
   for (const upload of uploads) {
@@ -655,6 +662,11 @@ function DataSources({
   const completed = requiredDatasets.filter((dataset) => latestByDataset.get(dataset)?.status === "processed").length;
   const remaining = requiredDatasets.length - completed;
   const setupScore = Math.round((completed / requiredDatasets.length) * 100);
+  const filteredUploads = uploads.filter((upload) => {
+    const datasetMatch = historyDatasetFilter === "all" || upload.datasetType === historyDatasetFilter;
+    const statusMatch = historyStatusFilter === "all" || upload.status === historyStatusFilter;
+    return datasetMatch && statusMatch;
+  });
 
   async function onFile(file: File | null) {
     if (!file) return;
@@ -756,9 +768,22 @@ function DataSources({
         ) : null}
       </Panel>
       <Panel title="Upload History">
+        <div className="upload-row">
+          <select value={historyDatasetFilter} onChange={(event) => setHistoryDatasetFilter(event.target.value as DatasetType | "all")}>
+            <option value="all">All Datasets</option>
+            {datasetTypes.map((type) => <option key={`history-${type.value}`} value={type.value}>{type.label}</option>)}
+          </select>
+          <select value={historyStatusFilter} onChange={(event) => setHistoryStatusFilter(event.target.value as FileUpload["status"] | "all")}>
+            <option value="all">All Statuses</option>
+            <option value="processed">Processed</option>
+            <option value="mapped">Mapped</option>
+            <option value="failed">Failed</option>
+          </select>
+          <span>{filteredUploads.length} of {uploads.length} shown</span>
+        </div>
         <div className="table">
           <div className="table-head"><span>File</span><span>Dataset</span><span>Rows</span><span>Status</span></div>
-          {uploads.map((upload) => (
+          {filteredUploads.map((upload) => (
             <div className="table-row" key={upload.id}>
               <span>{upload.filename}</span>
               <span>{upload.datasetType}</span>
@@ -766,7 +791,7 @@ function DataSources({
               <span>{upload.status}</span>
             </div>
           ))}
-          {!uploads.length ? <Empty text="No CSV uploads yet. Sample data is already loaded." /> : null}
+          {!filteredUploads.length ? <Empty text="No uploads match this filter." /> : null}
         </div>
       </Panel>
     </div>
