@@ -54,6 +54,14 @@ export function App() {
   const [lastUpdatedAt, setLastUpdatedAt] = useState<string | null>(null);
   const [refreshWarning, setRefreshWarning] = useState<string | null>(null);
   const refreshInFlight = useRef(false);
+  const activePreset = useMemo(() => {
+    const today = dateDaysAgo(0);
+    if (end !== today) return null;
+    if (start === dateDaysAgo(6)) return "7d";
+    if (start === dateDaysAgo(29)) return "30d";
+    if (start === dateDaysAgo(89)) return "90d";
+    return null;
+  }, [start, end]);
   const [error, setError] = useState<string | null>(null);
   const [authed, setAuthed] = useState(Boolean(localStorage.getItem("bp_token")));
   const [syncMessage, setSyncMessage] = useState<string>("");
@@ -183,11 +191,11 @@ export function App() {
             <p>{lastUpdatedAt ? `Last updated ${formatLastUpdated(lastUpdatedAt)}` : "Last updated pending"}</p>
           </div>
           <div className="date-controls">
-            <button onClick={() => { const next = dateRangeDaysAgo(7); setStart(next.start); setEnd(next.end); }}>7d</button>
-            <button onClick={() => { const next = dateRangeDaysAgo(30); setStart(next.start); setEnd(next.end); }}>30d</button>
-            <button onClick={() => { const next = dateRangeDaysAgo(90); setStart(next.start); setEnd(next.end); }}>90d</button>
-            <input type="date" value={start} onChange={(event) => setStart(event.target.value)} />
-            <input type="date" value={end} onChange={(event) => setEnd(event.target.value)} />
+            <button className={activePreset === "7d" ? "range-active" : ""} onClick={() => { const next = dateRangeDaysAgo(7); setStart(next.start); setEnd(next.end); }}>7d</button>
+            <button className={activePreset === "30d" ? "range-active" : ""} onClick={() => { const next = dateRangeDaysAgo(30); setStart(next.start); setEnd(next.end); }}>30d</button>
+            <button className={activePreset === "90d" ? "range-active" : ""} onClick={() => { const next = dateRangeDaysAgo(90); setStart(next.start); setEnd(next.end); }}>90d</button>
+            <input aria-label="Start date" type="date" value={start} onChange={(event) => setStart(event.target.value)} />
+            <input aria-label="End date" type="date" value={end} onChange={(event) => setEnd(event.target.value)} />
             <button onClick={() => void refresh({ silent: true })} disabled={refreshing}>
               {refreshing ? "Refreshing..." : "Refresh"}
             </button>
@@ -550,11 +558,13 @@ function AskAI({ start, end }: { start: string; end: string }) {
   const [question, setQuestion] = useState("Why did revenue change in this period?");
   const [answer, setAnswer] = useState<AiAnswer | null>(null);
   const [loading, setLoading] = useState(false);
+  const normalizedQuestion = question.trim();
 
   async function submit() {
+    if (normalizedQuestion.length < 3) return;
     setLoading(true);
     try {
-      setAnswer(await askAi(question, start, end));
+      setAnswer(await askAi(normalizedQuestion, start, end));
     } finally {
       setLoading(false);
     }
@@ -566,8 +576,18 @@ function AskAI({ start, end }: { start: string; end: string }) {
     <div className="stack">
       <Panel title="Ask AI">
         <div className="ask-box">
-          <textarea value={question} onChange={(event) => setQuestion(event.target.value)} />
-          <button className="primary" onClick={submit} disabled={loading}>{loading ? "Analyzing" : "Ask"}</button>
+          <textarea
+            aria-label="Ask AI question"
+            value={question}
+            onChange={(event) => setQuestion(event.target.value)}
+            onKeyDown={(event) => {
+              if ((event.ctrlKey || event.metaKey) && event.key === "Enter") {
+                event.preventDefault();
+                void submit();
+              }
+            }}
+          />
+          <button className="primary" onClick={submit} disabled={loading || normalizedQuestion.length < 3}>{loading ? "Analyzing" : "Ask"}</button>
         </div>
         <div className="chips">
           {suggestions.map((item) => <button key={item} onClick={() => setQuestion(item)}>{item}</button>)}
@@ -633,6 +653,7 @@ function DataSources({
     if (!latestByDataset.has(upload.datasetType)) latestByDataset.set(upload.datasetType, upload);
   }
   const completed = requiredDatasets.filter((dataset) => latestByDataset.get(dataset)?.status === "processed").length;
+  const remaining = requiredDatasets.length - completed;
   const setupScore = Math.round((completed / requiredDatasets.length) * 100);
 
   async function onFile(file: File | null) {
@@ -682,6 +703,7 @@ function DataSources({
       <Panel title="Onboarding Progress">
         <div className="stack">
           <p>Data readiness: <strong>{setupScore}%</strong></p>
+          <p>Core datasets complete: <strong>{completed}/{requiredDatasets.length}</strong> ({remaining} remaining)</p>
           <p>Time to first insight: <strong>{formatTimeToFirstInsight(onboarding?.timeToFirstInsightSeconds ?? null, onboarding?.firstUploadAt ?? null)}</strong></p>
           <div className="table">
             <div className="table-head"><span>Dataset</span><span>Status</span></div>

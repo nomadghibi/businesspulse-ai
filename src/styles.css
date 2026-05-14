@@ -214,6 +214,10 @@ h2 { font-size: 18px; margin-bottom: 14px; }
 p { color: #5a665f; line-height: 1.55; }
 
 .date-controls { display: flex; gap: 10px; }
+.date-controls .range-active {
+  background: #1b4f43;
+  color: #ffffff;
+}
 input, select, textarea {
   border: 1px solid #cdd8d2;
   background: #ffffff;
