@@ -1,5 +1,5 @@
 import { AlertTriangle, ArrowRight, BarChart3, Bot, CheckCircle2, Database, FileText, Lightbulb, Loader2, Upload } from "lucide-react";
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { Area, AreaChart, Bar, BarChart, CartesianGrid, ResponsiveContainer, Tooltip, XAxis, YAxis } from "recharts";
 import type { AiAnswer, ColumnMapping, CsvPreview, DatasetType, FileUpload, MetricsResponse, Organization, Recommendation, Report } from "../shared/types";
 import { askAi, changePassword, clearToken, commitUploadCsv, createCheckout, type AppUser, generateReport, getAlerts, getMetrics, getOnboardingStatus, getOrganization, getRecommendations, getReports, getUploads, getUsers, inviteUser, login, logout, type OnboardingStatus, previewUploadCsv, requestDemo, setToken, startTrial, syncStripe, trackEvent, trackPublicEvent, updateUserRole, updateUserStatus } from "./api";
@@ -41,6 +41,7 @@ export function App() {
   const [refreshing, setRefreshing] = useState(false);
   const [lastUpdatedAt, setLastUpdatedAt] = useState<string | null>(null);
   const [refreshWarning, setRefreshWarning] = useState<string | null>(null);
+  const refreshInFlight = useRef(false);
   const [error, setError] = useState<string | null>(null);
   const [authed, setAuthed] = useState(Boolean(localStorage.getItem("bp_token")));
   const [syncMessage, setSyncMessage] = useState<string>("");
@@ -52,6 +53,8 @@ export function App() {
   const [passwordMessage, setPasswordMessage] = useState("");
 
   async function refresh(options?: { silent?: boolean }) {
+    if (refreshInFlight.current) return;
+    refreshInFlight.current = true;
     const silent = options?.silent ?? false;
     if (silent) {
       setRefreshing(true);
@@ -88,6 +91,7 @@ export function App() {
         setError(message);
       }
     } finally {
+      refreshInFlight.current = false;
       if (silent) {
         setRefreshing(false);
       } else {
