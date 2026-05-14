@@ -554,6 +554,13 @@ function formatLastUpdated(iso: string) {
   return `${deltaHours}h ago`;
 }
 
+function escapeCsv(value: string) {
+  if (value.includes(",") || value.includes("\"") || value.includes("\n")) {
+    return `"${value.replaceAll("\"", "\"\"")}"`;
+  }
+  return value;
+}
+
 function AskAI({ start, end }: { start: string; end: string }) {
   const [question, setQuestion] = useState("Why did revenue change in this period?");
   const [answer, setAnswer] = useState<AiAnswer | null>(null);
@@ -730,6 +737,30 @@ function DataSources({
     }
   }
 
+  function exportHistoryCsv() {
+    const lines = [
+      "filename,dataset_type,row_count,status,created_at",
+      ...sortedUploads.map((upload) =>
+        [
+          escapeCsv(upload.filename),
+          upload.datasetType,
+          String(upload.rowCount),
+          upload.status,
+          upload.createdAt
+        ].join(",")
+      )
+    ];
+    const blob = new Blob([lines.join("\n")], { type: "text/csv;charset=utf-8" });
+    const url = URL.createObjectURL(blob);
+    const anchor = document.createElement("a");
+    anchor.href = url;
+    anchor.download = `upload-history-${new Date().toISOString().slice(0, 10)}.csv`;
+    document.body.appendChild(anchor);
+    anchor.click();
+    anchor.remove();
+    URL.revokeObjectURL(url);
+  }
+
   return (
     <div className="stack">
       <Panel title="Onboarding Progress">
@@ -805,6 +836,7 @@ function DataSources({
             <option value="rows_desc">Rows high to low</option>
             <option value="rows_asc">Rows low to high</option>
           </select>
+          <button onClick={exportHistoryCsv} disabled={!sortedUploads.length}>Export CSV</button>
           <span>{filteredUploads.length} of {uploads.length} shown</span>
         </div>
         <div className="table">
