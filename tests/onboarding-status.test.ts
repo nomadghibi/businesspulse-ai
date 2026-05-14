@@ -13,6 +13,9 @@ const server = spawn(process.execPath, ["node_modules/tsx/dist/cli.mjs", "server
 
 try {
   await waitForHealth();
+  const unauthenticated = await fetch(`${base}/api/onboarding-status`);
+  assert.equal(unauthenticated.status, 401);
+
   const login = await createTrialAndLogin();
 
   const before = await getOnboarding(login.token);
@@ -35,6 +38,11 @@ try {
   assert.ok(afterComplete.coreDatasetsCompletedAt);
   assert.ok(typeof afterComplete.timeToFirstInsightSeconds === "number");
   assert.ok((afterComplete.timeToFirstInsightSeconds ?? -1) >= 0);
+
+  await uploadDataset(login.token, "jobs", "job_id,completed_at\nJ-2,2026-05-13T11:00:00.000Z\n");
+  const afterAdditionalUpload = await getOnboarding(login.token);
+  assert.equal(afterAdditionalUpload.firstUploadAt, afterComplete.firstUploadAt);
+  assert.equal(afterAdditionalUpload.coreDatasetsCompletedAt, afterComplete.coreDatasetsCompletedAt);
 
   console.log("onboarding-status.test.ts passed");
 } finally {
