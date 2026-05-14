@@ -1178,21 +1178,27 @@ function Recommendations({
   const [priorityFilter, setPriorityFilter] = useState<"all" | "high" | "medium" | "low">(
     () => (localStorage.getItem("bp_recommendations_priority") as "all" | "high" | "medium" | "low") ?? "all"
   );
+  const [statusFilter, setStatusFilter] = useState<"all" | "new" | "accepted" | "rejected" | "completed" | "dismissed">(
+    () => (localStorage.getItem("bp_recommendations_status") as "all" | "new" | "accepted" | "rejected" | "completed" | "dismissed") ?? "all"
+  );
   const [query, setQuery] = useState(() => localStorage.getItem("bp_recommendations_query") ?? "");
   const filtered = recommendations.filter((rec) => {
     const byPriority = priorityFilter === "all" || rec.priority === priorityFilter;
+    const byStatus = statusFilter === "all" || rec.status === statusFilter;
     const q = query.trim().toLowerCase();
     const byQuery = !q || rec.title.toLowerCase().includes(q) || rec.description.toLowerCase().includes(q) || rec.expectedImpact.toLowerCase().includes(q);
-    return byPriority && byQuery;
+    return byPriority && byStatus && byQuery;
   });
 
   useEffect(() => {
     localStorage.setItem("bp_recommendations_priority", priorityFilter);
+    localStorage.setItem("bp_recommendations_status", statusFilter);
     localStorage.setItem("bp_recommendations_query", query);
-  }, [priorityFilter, query]);
+  }, [priorityFilter, statusFilter, query]);
 
   function clearRecommendationFilters() {
     setPriorityFilter("all");
+    setStatusFilter("all");
     setQuery("");
   }
 
@@ -1222,6 +1228,14 @@ function Recommendations({
           <option value="high">High</option>
           <option value="medium">Medium</option>
           <option value="low">Low</option>
+        </select>
+        <select value={statusFilter} onChange={(event) => setStatusFilter(event.target.value as "all" | "new" | "accepted" | "rejected" | "completed" | "dismissed")}>
+          <option value="all">All statuses</option>
+          <option value="new">New</option>
+          <option value="accepted">Accepted</option>
+          <option value="dismissed">Dismissed</option>
+          <option value="completed">Completed</option>
+          <option value="rejected">Rejected</option>
         </select>
         <input value={query} onChange={(event) => setQuery(event.target.value)} placeholder="Search recommendations" />
         <button onClick={clearRecommendationFilters}>Clear Filters</button>
