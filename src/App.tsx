@@ -30,10 +30,16 @@ function isIsoDate(value: string) {
   return /^\d{4}-\d{2}-\d{2}$/.test(value);
 }
 
-function initialDateRange() {
+function readUrlViewState() {
   const params = new URLSearchParams(window.location.search);
-  const startParam = params.get("start");
-  const endParam = params.get("end");
+  const tab = params.get("tab");
+  const start = params.get("start");
+  const end = params.get("end");
+  return { tab, start, end };
+}
+
+function initialDateRange() {
+  const { start: startParam, end: endParam } = readUrlViewState();
   if (startParam && endParam && isIsoDate(startParam) && isIsoDate(endParam) && startParam <= endParam) {
     return { start: startParam, end: endParam };
   }
@@ -82,7 +88,7 @@ function dateWindowDays(start: string, end: string) {
 
 export function App() {
   const initialRange = initialDateRange();
-  const initialTabFromUrl = new URLSearchParams(window.location.search).get("tab");
+  const initialTabFromUrl = readUrlViewState().tab;
   const allowedTabs = new Set(["dashboard", "sources", "ask", "reports", "recommendations", "users", "settings"]);
   const [org, setOrg] = useState<Organization | null>(null);
   const [metrics, setMetrics] = useState<MetricsResponse | null>(null);
@@ -223,6 +229,19 @@ export function App() {
     const nextUrl = `${window.location.pathname}?${nextQuery}${window.location.hash}`;
     window.history.replaceState({}, "", nextUrl);
   }, [active, start, end]);
+
+  useEffect(() => {
+    const onPopState = () => {
+      const { tab, start: nextStart, end: nextEnd } = readUrlViewState();
+      if (tab && allowedTabs.has(tab)) setActive(tab);
+      if (nextStart && nextEnd && isIsoDate(nextStart) && isIsoDate(nextEnd) && nextStart <= nextEnd) {
+        setStart(nextStart);
+        setEnd(nextEnd);
+      }
+    };
+    window.addEventListener("popstate", onPopState);
+    return () => window.removeEventListener("popstate", onPopState);
+  }, []);
 
   useEffect(() => {
     if (!authed || mustChangePassword) return;
