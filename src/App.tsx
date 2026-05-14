@@ -72,6 +72,7 @@ export function App() {
   const [nextPassword, setNextPassword] = useState("");
   const [passwordMessage, setPasswordMessage] = useState("");
   const [askSeed, setAskSeed] = useState("");
+  const [askAutoRun, setAskAutoRun] = useState(false);
 
   async function refresh(options?: { silent?: boolean }) {
     if (start > end) return;
@@ -231,8 +232,8 @@ export function App() {
         {refreshWarning ? <div className="notice">{refreshWarning}</div> : null}
         {loading && !metrics ? <Loading /> : null}
 
-        {metrics && active === "dashboard" ? <Dashboard metrics={metrics} uploads={uploads} alerts={alerts} recommendations={recommendations} onboarding={onboarding} onOpenSources={() => setActive("sources")} onOpenAsk={(question) => { setAskSeed(question); setActive("ask"); }} /> : null}
-        {metrics && active === "ask" ? <AskAI start={start} end={end} seedQuestion={askSeed} /> : null}
+        {metrics && active === "dashboard" ? <Dashboard metrics={metrics} uploads={uploads} alerts={alerts} recommendations={recommendations} onboarding={onboarding} onOpenSources={() => setActive("sources")} onOpenAsk={(question) => { setAskSeed(question); setAskAutoRun(true); setActive("ask"); }} /> : null}
+        {metrics && active === "ask" ? <AskAI start={start} end={end} seedQuestion={askSeed} autoRunSeed={askAutoRun} onAutoRunComplete={() => setAskAutoRun(false)} /> : null}
         {active === "sources" ? <DataSources uploads={uploads} onboarding={onboarding} refresh={refresh} /> : null}
         {active === "reports" ? <Reports reports={reports} start={start} end={end} refresh={refresh} /> : null}
         {active === "recommendations" ? <Recommendations recommendations={recommendations} /> : null}
@@ -625,7 +626,19 @@ function escapeCsv(value: string) {
   return value;
 }
 
-function AskAI({ start, end, seedQuestion }: { start: string; end: string; seedQuestion?: string }) {
+function AskAI({
+  start,
+  end,
+  seedQuestion,
+  autoRunSeed,
+  onAutoRunComplete
+}: {
+  start: string;
+  end: string;
+  seedQuestion?: string;
+  autoRunSeed?: boolean;
+  onAutoRunComplete?: () => void;
+}) {
   const [question, setQuestion] = useState(() => localStorage.getItem("bp_ask_question") ?? "Why did revenue change in this period?");
   const [answer, setAnswer] = useState<AiAnswer | null>(null);
   const [loading, setLoading] = useState(false);
@@ -642,12 +655,13 @@ function AskAI({ start, end, seedQuestion }: { start: string; end: string; seedQ
     setQuestion(seedQuestion);
   }, [seedQuestion]);
 
-  async function submit() {
-    if (normalizedQuestion.length < 3) return;
+  async function submit(questionOverride?: string) {
+    const requestQuestion = (questionOverride ?? normalizedQuestion).trim();
+    if (requestQuestion.length < 3) return;
     setLoading(true);
     setError(null);
     try {
-      setAnswer(await askAi(normalizedQuestion, start, end));
+      setAnswer(await askAi(requestQuestion, start, end));
       setCopyMessage(null);
     } catch (err) {
       setError(err instanceof Error ? err.message : "Unable to get AI answer right now.");
@@ -655,6 +669,13 @@ function AskAI({ start, end, seedQuestion }: { start: string; end: string; seedQ
       setLoading(false);
     }
   }
+
+  useEffect(() => {
+    if (!autoRunSeed || !seedQuestion || loading) return;
+    void submit(seedQuestion).finally(() => {
+      onAutoRunComplete?.();
+    });
+  }, [autoRunSeed, seedQuestion, loading, onAutoRunComplete]);
 
   async function copyAnswer() {
     if (!answer) return;
@@ -685,7 +706,7 @@ function AskAI({ start, end, seedQuestion }: { start: string; end: string; seedQ
               }
             }}
           />
-          <button className="primary" onClick={submit} disabled={loading || normalizedQuestion.length < 3}>{loading ? "Analyzing" : "Ask"}</button>
+          <button className="primary" onClick={() => void submit()} disabled={loading || normalizedQuestion.length < 3}>{loading ? "Analyzing" : "Ask"}</button>
         </div>
         <div className="chips">
           {suggestions.map((item) => <button key={item} onClick={() => setQuestion(item)}>{item}</button>)}
