@@ -176,8 +176,10 @@ export function App() {
     }
   }
 
-  async function refresh(options?: { silent?: boolean }) {
-    if (start > end) return;
+  async function refresh(options?: { silent?: boolean; startOverride?: string; endOverride?: string }) {
+    const rangeStart = options?.startOverride ?? start;
+    const rangeEnd = options?.endOverride ?? end;
+    if (rangeStart > rangeEnd) return;
     if (refreshInFlight.current) return;
     refreshInFlight.current = true;
     const silent = options?.silent ?? false;
@@ -190,7 +192,7 @@ export function App() {
     try {
       const [orgRes, metricsRes, uploadsRes, reportsRes, recsRes, alertsRes, onboardingRes] = await Promise.all([
         getOrganization(),
-        getMetrics(start, end),
+        getMetrics(rangeStart, rangeEnd),
         getUploads(),
         getReports(),
         getRecommendations(),
@@ -451,7 +453,7 @@ export function App() {
                 const next = normalizeDateRangeForRefresh();
                 setStart(next.start);
                 setEnd(next.end);
-                void refresh({ silent: true });
+                void refresh({ silent: true, startOverride: next.start, endOverride: next.end });
               }}
             />
             <input
@@ -465,7 +467,7 @@ export function App() {
                 const next = normalizeDateRangeForRefresh();
                 setStart(next.start);
                 setEnd(next.end);
-                void refresh({ silent: true });
+                void refresh({ silent: true, startOverride: next.start, endOverride: next.end });
               }}
             />
             <button onClick={() => void refresh({ silent: true })} disabled={refreshing || hasInvalidRange}>
