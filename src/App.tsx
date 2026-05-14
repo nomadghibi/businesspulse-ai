@@ -87,6 +87,7 @@ export function App() {
   const [askSeed, setAskSeed] = useState("");
   const [askAutoRun, setAskAutoRun] = useState(false);
   const [showShortcuts, setShowShortcuts] = useState(false);
+  const [shortcutsCopied, setShortcutsCopied] = useState(false);
 
   async function refresh(options?: { silent?: boolean }) {
     if (start > end) return;
@@ -348,6 +349,25 @@ export function App() {
               <li><code>?</code>: Toggle this help</li>
               <li><code>Esc</code>: Close this help</li>
             </ul>
+            <button
+              className="align-start"
+              onClick={async () => {
+                const text = [
+                  "g then d: Dashboard",
+                  "g then a: Ask AI",
+                  "g then s: Data Sources",
+                  "g then r: Recommendations",
+                  "[ and ]: Shift date window",
+                  "?: Toggle shortcuts help",
+                  "Esc: Close shortcuts help"
+                ].join("\n");
+                await navigator.clipboard.writeText(text);
+                setShortcutsCopied(true);
+                window.setTimeout(() => setShortcutsCopied(false), 1800);
+              }}
+            >
+              {shortcutsCopied ? "Copied" : "Copy Shortcuts"}
+            </button>
             <button className="align-start" onClick={() => setShowShortcuts(false)}>Close</button>
           </section>
         </div>
