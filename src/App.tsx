@@ -54,7 +54,8 @@ function readUrlViewState() {
   const tab = params.get("tab");
   const start = params.get("start");
   const end = params.get("end");
-  return { tab, start, end };
+  const live = params.get("live");
+  return { tab, start, end, live };
 }
 
 function initialDateRange() {
@@ -119,7 +120,8 @@ function canShiftForward(end: string) {
 
 export function App() {
   const initialRange = initialDateRange();
-  const initialTabFromUrl = readUrlViewState().tab;
+  const initialUrlState = readUrlViewState();
+  const initialTabFromUrl = initialUrlState.tab;
   const [org, setOrg] = useState<Organization | null>(null);
   const [metrics, setMetrics] = useState<MetricsResponse | null>(null);
   const [uploads, setUploads] = useState<FileUpload[]>([]);
@@ -159,6 +161,8 @@ export function App() {
   const [shortcutsCopied, setShortcutsCopied] = useState(false);
   const [viewLinkMessage, setViewLinkMessage] = useState<string | null>(null);
   const [liveRefreshEnabled, setLiveRefreshEnabled] = useState(() => {
+    if (initialUrlState.live === "on") return true;
+    if (initialUrlState.live === "off") return false;
     const raw = localStorage.getItem("bp_live_refresh_enabled");
     return raw == null ? true : raw === "true";
   });
@@ -271,15 +275,18 @@ export function App() {
     params.set("tab", active);
     params.set("start", start);
     params.set("end", end);
+    params.set("live", liveRefreshEnabled ? "on" : "off");
     const nextQuery = params.toString();
     const nextUrl = `${window.location.pathname}?${nextQuery}${window.location.hash}`;
     window.history.replaceState({}, "", nextUrl);
-  }, [active, start, end]);
+  }, [active, start, end, liveRefreshEnabled]);
 
   useEffect(() => {
     const onPopState = () => {
-      const { tab, start: nextStart, end: nextEnd } = readUrlViewState();
+      const { tab, start: nextStart, end: nextEnd, live } = readUrlViewState();
       setActive(normalizeTab(tab));
+      if (live === "on") setLiveRefreshEnabled(true);
+      if (live === "off") setLiveRefreshEnabled(false);
       if (nextStart && nextEnd && isValidDateRange(nextStart, nextEnd)) {
         setStart(nextStart);
         setEnd(nextEnd);
