@@ -160,6 +160,7 @@ export function App() {
   const [viewLinkMessage, setViewLinkMessage] = useState<string | null>(null);
   const windowDays = useMemo(() => dateWindowDays(start, end), [start, end]);
   const forwardEnabled = useMemo(() => canShiftForward(end), [end]);
+  const hasInvalidRange = start > end;
 
   async function copyCurrentViewLink() {
     try {
@@ -435,9 +436,21 @@ export function App() {
             <button onClick={() => void copyCurrentViewLink()}>Copy View Link</button>
             <input aria-label="Start date" type="date" value={start} max={dateDaysAgo(0)} onChange={(event) => setStart(clampDateToToday(event.target.value))} />
             <input aria-label="End date" type="date" value={end} max={dateDaysAgo(0)} onChange={(event) => setEnd(clampDateToToday(event.target.value))} />
-            <button onClick={() => void refresh({ silent: true })} disabled={refreshing}>
+            <button onClick={() => void refresh({ silent: true })} disabled={refreshing || hasInvalidRange}>
               {refreshing ? "Refreshing..." : "Refresh"}
             </button>
+            {hasInvalidRange ? (
+              <button
+                onClick={() => {
+                  const nextStart = end;
+                  const nextEnd = start;
+                  setStart(nextStart);
+                  setEnd(nextEnd);
+                }}
+              >
+                Swap Dates
+              </button>
+            ) : null}
             <button onClick={async () => {
               try { await logout(); } catch {}
               clearToken();
