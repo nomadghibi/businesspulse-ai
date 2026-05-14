@@ -86,6 +86,7 @@ export function App() {
   const [passwordMessage, setPasswordMessage] = useState("");
   const [askSeed, setAskSeed] = useState("");
   const [askAutoRun, setAskAutoRun] = useState(false);
+  const [showShortcuts, setShowShortcuts] = useState(false);
 
   async function refresh(options?: { silent?: boolean }) {
     if (start > end) return;
@@ -222,6 +223,23 @@ export function App() {
     };
   }, [authed, start, end]);
 
+  useEffect(() => {
+    if (!authed) return;
+    const onKeyDown = (event: KeyboardEvent) => {
+      const target = event.target as HTMLElement | null;
+      const tagName = target?.tagName?.toLowerCase();
+      const isTyping = tagName === "input" || tagName === "textarea" || tagName === "select" || target?.isContentEditable;
+      if (isTyping) return;
+      if (event.key === "?") {
+        event.preventDefault();
+        setShowShortcuts((prev) => !prev);
+      }
+      if (event.key === "Escape") setShowShortcuts(false);
+    };
+    window.addEventListener("keydown", onKeyDown);
+    return () => window.removeEventListener("keydown", onKeyDown);
+  }, [authed]);
+
   const tabs = [
     ["dashboard", BarChart3, "Dashboard"],
     ["ask", Bot, "Ask AI"],
@@ -316,6 +334,23 @@ export function App() {
           await refresh();
         }} onUsersChanged={refresh} /> : null}
       </section>
+      {showShortcuts ? (
+        <div className="shortcuts-modal" onClick={() => setShowShortcuts(false)}>
+          <section className="shortcuts-panel" onClick={(event) => event.stopPropagation()}>
+            <h2>Keyboard Shortcuts</h2>
+            <ul className="bullets">
+              <li><code>g</code> then <code>d</code>: Dashboard</li>
+              <li><code>g</code> then <code>a</code>: Ask AI</li>
+              <li><code>g</code> then <code>s</code>: Data Sources</li>
+              <li><code>g</code> then <code>r</code>: Recommendations</li>
+              <li><code>[</code> and <code>]</code>: Shift date window</li>
+              <li><code>?</code>: Toggle this help</li>
+              <li><code>Esc</code>: Close this help</li>
+            </ul>
+            <button className="align-start" onClick={() => setShowShortcuts(false)}>Close</button>
+          </section>
+        </div>
+      ) : null}
     </main>
   );
 }
