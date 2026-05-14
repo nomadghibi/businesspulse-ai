@@ -414,6 +414,21 @@ export function App() {
       const tagName = target?.tagName?.toLowerCase();
       const isTyping = tagName === "input" || tagName === "textarea" || tagName === "select" || target?.isContentEditable;
       if (isTyping) return;
+      if (!(event.shiftKey && event.key === "0")) return;
+      event.preventDefault();
+      resetViewState();
+    };
+    window.addEventListener("keydown", onKeyDown);
+    return () => window.removeEventListener("keydown", onKeyDown);
+  }, [authed]);
+
+  useEffect(() => {
+    if (!authed) return;
+    const onKeyDown = (event: KeyboardEvent) => {
+      const target = event.target as HTMLElement | null;
+      const tagName = target?.tagName?.toLowerCase();
+      const isTyping = tagName === "input" || tagName === "textarea" || tagName === "select" || target?.isContentEditable;
+      if (isTyping) return;
       if (event.key === "?") {
         event.preventDefault();
         setShowShortcuts((prev) => !prev);
@@ -590,6 +605,7 @@ export function App() {
               <li><code>[</code> and <code>]</code>: Shift date window</li>
               <li><code>1</code>/<code>2</code>/<code>3</code>/<code>4</code>: 7d/30d/90d/12m presets</li>
               <li><code>Shift</code>+<code>R</code>: Refresh current view</li>
+              <li><code>Shift</code>+<code>0</code>: Reset view defaults</li>
               <li><code>?</code>: Toggle this help</li>
               <li><code>Esc</code>: Close this help</li>
             </ul>
@@ -607,6 +623,7 @@ export function App() {
                   "[ and ]: Shift date window",
                   "1/2/3/4: 7d/30d/90d/12m presets",
                   "Shift+R: Refresh current view",
+                  "Shift+0: Reset view defaults",
                   "?: Toggle shortcuts help",
                   "Esc: Close shortcuts help"
                 ].join("\n");
