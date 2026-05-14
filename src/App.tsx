@@ -40,6 +40,7 @@ export function App() {
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
   const [lastUpdatedAt, setLastUpdatedAt] = useState<string | null>(null);
+  const [refreshWarning, setRefreshWarning] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [authed, setAuthed] = useState(Boolean(localStorage.getItem("bp_token")));
   const [syncMessage, setSyncMessage] = useState<string>("");
@@ -57,7 +58,7 @@ export function App() {
     } else {
       setLoading(true);
     }
-    setError(null);
+    if (!silent) setError(null);
     try {
       const [orgRes, metricsRes, uploadsRes, reportsRes, recsRes, alertsRes, onboardingRes] = await Promise.all([
         getOrganization(),
@@ -78,8 +79,14 @@ export function App() {
       setOnboarding(onboardingRes);
       setUsers(usersRes);
       setLastUpdatedAt(new Date().toISOString());
+      setRefreshWarning(null);
     } catch (err) {
-      setError(err instanceof Error ? err.message : "Unable to load dashboard");
+      const message = err instanceof Error ? err.message : "Unable to load dashboard";
+      if (silent && metrics) {
+        setRefreshWarning(`Live refresh failed: ${message}`);
+      } else {
+        setError(message);
+      }
     } finally {
       if (silent) {
         setRefreshing(false);
@@ -177,6 +184,7 @@ export function App() {
         ) : null}
 
         {error ? <div className="notice error">{error}</div> : null}
+        {refreshWarning ? <div className="notice">{refreshWarning}</div> : null}
         {loading && !metrics ? <Loading /> : null}
 
         {metrics && active === "dashboard" ? <Dashboard metrics={metrics} uploads={uploads} alerts={alerts} recommendations={recommendations} onboarding={onboarding} onOpenSources={() => setActive("sources")} /> : null}
