@@ -398,6 +398,23 @@ export function App() {
       const tagName = target?.tagName?.toLowerCase();
       const isTyping = tagName === "input" || tagName === "textarea" || tagName === "select" || target?.isContentEditable;
       if (isTyping) return;
+      if (!(event.shiftKey && event.key.toLowerCase() === "t")) return;
+      event.preventDefault();
+      const next = alignRangeToToday(start, end);
+      setStart(next.start);
+      setEnd(next.end);
+    };
+    window.addEventListener("keydown", onKeyDown);
+    return () => window.removeEventListener("keydown", onKeyDown);
+  }, [authed, start, end]);
+
+  useEffect(() => {
+    if (!authed) return;
+    const onKeyDown = (event: KeyboardEvent) => {
+      const target = event.target as HTMLElement | null;
+      const tagName = target?.tagName?.toLowerCase();
+      const isTyping = tagName === "input" || tagName === "textarea" || tagName === "select" || target?.isContentEditable;
+      if (isTyping) return;
       if (!(event.shiftKey && event.key.toLowerCase() === "c" && (event.metaKey || event.ctrlKey))) return;
       event.preventDefault();
       if (hasInvalidRange) return;
@@ -643,6 +660,7 @@ export function App() {
               <li><code>1</code>/<code>2</code>/<code>3</code>/<code>4</code>: 7d/30d/90d/12m presets</li>
               <li><code>Shift</code>+<code>R</code>: Refresh current view</li>
               <li><code>Shift</code>+<code>L</code>: Toggle live refresh</li>
+              <li><code>Shift</code>+<code>T</code>: Align range to today</li>
               <li><code>Shift</code>+<code>0</code>: Reset view defaults</li>
               <li><code>Ctrl/Cmd</code>+<code>Shift</code>+<code>C</code>: Copy view link</li>
               <li><code>?</code>: Toggle this help</li>
@@ -663,6 +681,7 @@ export function App() {
                   "1/2/3/4: 7d/30d/90d/12m presets",
                   "Shift+R: Refresh current view",
                   "Shift+L: Toggle live refresh",
+                  "Shift+T: Align range to today",
                   "Shift+0: Reset view defaults",
                   "Ctrl/Cmd+Shift+C: Copy view link",
                   "?: Toggle shortcuts help",
