@@ -438,6 +438,14 @@ function Dashboard({
   const qualityScore = Math.max(0, 20 - qualityIssueCount * 2);
   const setupScore = Math.max(0, Math.min(100, completionScore + qualityScore));
   const timeToFirstInsight = formatTimeToFirstInsight(onboarding?.timeToFirstInsightSeconds ?? null, onboarding?.firstUploadAt ?? null);
+  const freshnessRows = requiredDatasets.map((dataset) => {
+    const upload = latestByDataset.get(dataset);
+    return {
+      dataset,
+      status: upload?.status ?? "missing",
+      updated: upload ? formatLastUpdated(upload.createdAt) : "never"
+    };
+  });
 
   function exportKpisCsv() {
     const lines = [
@@ -549,6 +557,21 @@ function Dashboard({
             {alerts.length ? alerts.map((alert) => <StatusItem key={alert.title} icon={<AlertTriangle size={18} />} title={alert.title} meta={alert.severity} body={alert.description} />) : <Empty text="No severe anomalies detected for this range." />}
           </div>
         </Panel>
+        <Panel title="Data Freshness">
+          <div className="table freshness-table">
+            <div className="table-head"><span>Dataset</span><span>Status</span><span>Last upload</span></div>
+            {freshnessRows.map((row) => (
+              <div className="table-row" key={row.dataset}>
+                <span>{row.dataset.replace("_", " ")}</span>
+                <span>{row.status}</span>
+                <span>{row.updated}</span>
+              </div>
+            ))}
+          </div>
+        </Panel>
+      </section>
+
+      <section className="grid two">
         <Panel title="Data Quality">
           <div className="list">
             {metrics.qualityIssues.length ? metrics.qualityIssues.map((issue) => <StatusItem key={issue} title={issue} meta="review" body="This limitation will be cited in AI answers." />) : <Empty text="No upload quality issues are currently blocking analysis." />}

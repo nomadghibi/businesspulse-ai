@@ -311,6 +311,7 @@ textarea { min-height: 110px; width: 100%; resize: vertical; }
 .table-head { color: #66746d; font-size: 13px; font-weight: 700; text-transform: uppercase; }
 .table-row { background: #f8faf8; border-radius: 8px; }
 .setup-table .table-head, .setup-table .table-row { grid-template-columns: 1.5fr 1fr; }
+.freshness-table .table-head, .freshness-table .table-row { grid-template-columns: 1.4fr 0.8fr 1fr; }
 
 .bullets { margin: 0; padding-left: 20px; color: #4a554f; line-height: 1.7; }
 .empty, .notice, .loading { padding: 18px; border-radius: 8px; background: #eef4f1; color: #43514a; }
