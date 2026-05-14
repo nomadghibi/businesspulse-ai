@@ -782,6 +782,17 @@ function DataSources({
     const bTs = Date.parse(b.createdAt);
     return historySort === "oldest" ? aTs - bTs : bTs - aTs;
   });
+  const stalePriorityDataset = requiredDatasets
+    .map((dataset) => {
+      const latest = latestByDataset.get(dataset);
+      const ageDays = latest ? Math.floor((Date.now() - Date.parse(latest.createdAt)) / (24 * 60 * 60 * 1000)) : Number.POSITIVE_INFINITY;
+      return { dataset, ageDays, missing: !latest };
+    })
+    .sort((a, b) => {
+      if (a.missing && !b.missing) return -1;
+      if (!a.missing && b.missing) return 1;
+      return b.ageDays - a.ageDays;
+    })[0]?.dataset ?? "jobs";
 
   useEffect(() => {
     localStorage.setItem("bp_upload_history_dataset", historyDatasetFilter);
@@ -862,6 +873,7 @@ function DataSources({
           <p>Data readiness: <strong>{setupScore}%</strong></p>
           <p>Core datasets complete: <strong>{completed}/{requiredDatasets.length}</strong> ({remaining} remaining)</p>
           <p>Time to first insight: <strong>{formatTimeToFirstInsight(onboarding?.timeToFirstInsightSeconds ?? null, onboarding?.firstUploadAt ?? null)}</strong></p>
+          <button className="align-start" onClick={() => setDatasetType(stalePriorityDataset)}>Refresh Stale Dataset</button>
           <div className="table">
             <div className="table-head"><span>Dataset</span><span>Status</span></div>
             {requiredDatasets.map((dataset) => {
