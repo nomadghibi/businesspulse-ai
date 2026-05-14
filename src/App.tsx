@@ -1251,11 +1251,12 @@ function Recommendations({
   return (
     <Panel title="Prioritized Actions">
       <div className="upload-row">
-        <span>New: {statusCounts.new ?? 0}</span>
-        <span>Accepted: {statusCounts.accepted ?? 0}</span>
-        <span>Completed: {statusCounts.completed ?? 0}</span>
-        <span>Dismissed: {statusCounts.dismissed ?? 0}</span>
-        <span>Rejected: {statusCounts.rejected ?? 0}</span>
+        <button className={statusFilter === "new" ? "range-active" : ""} onClick={() => setStatusFilter("new")}>New: {statusCounts.new ?? 0}</button>
+        <button className={statusFilter === "accepted" ? "range-active" : ""} onClick={() => setStatusFilter("accepted")}>Accepted: {statusCounts.accepted ?? 0}</button>
+        <button className={statusFilter === "completed" ? "range-active" : ""} onClick={() => setStatusFilter("completed")}>Completed: {statusCounts.completed ?? 0}</button>
+        <button className={statusFilter === "dismissed" ? "range-active" : ""} onClick={() => setStatusFilter("dismissed")}>Dismissed: {statusCounts.dismissed ?? 0}</button>
+        <button className={statusFilter === "rejected" ? "range-active" : ""} onClick={() => setStatusFilter("rejected")}>Rejected: {statusCounts.rejected ?? 0}</button>
+        <button className={statusFilter === "all" ? "range-active" : ""} onClick={() => setStatusFilter("all")}>All</button>
       </div>
       <div className="upload-row">
         <select value={priorityFilter} onChange={(event) => setPriorityFilter(event.target.value as "all" | "high" | "medium" | "low")}>
