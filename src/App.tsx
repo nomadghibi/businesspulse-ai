@@ -3,120 +3,9 @@ import { useEffect, useMemo, useRef, useState } from "react";
 import { Area, AreaChart, Bar, BarChart, CartesianGrid, ResponsiveContainer, Tooltip, XAxis, YAxis } from "recharts";
 import type { AiAnswer, ColumnMapping, CsvPreview, DatasetType, FileUpload, MetricsResponse, Organization, Recommendation, Report } from "../shared/types";
 import { askAi, changePassword, clearToken, commitUploadCsv, createCheckout, createRecommendationFromAnswer, type AppUser, generateReport, getAlerts, getMetrics, getOnboardingStatus, getOrganization, getRecommendations, getReports, getUploads, getUsers, inviteUser, login, logout, type OnboardingStatus, previewUploadCsv, requestDemo, setToken, startTrial, syncStripe, trackEvent, trackPublicEvent, updateRecommendationStatus, updateUserRole, updateUserStatus } from "./api";
-
-const datasetTypes: Array<{ value: DatasetType; label: string }> = [
-  { value: "customers", label: "Customers" },
-  { value: "leads", label: "Leads" },
-  { value: "jobs", label: "Jobs" },
-  { value: "revenue", label: "Revenue" },
-  { value: "marketing_spend", label: "Marketing Spend" }
-];
-
-const datasetTargetFields: Record<DatasetType, string[]> = {
-  customers: ["customer_id", "name", "email", "phone", "city", "state", "zip", "lead_source", "created_at"],
-  leads: ["lead_id", "customer_id", "source", "status", "created_at", "booked_at", "estimated_value", "campaign"],
-  jobs: ["job_id", "customer_id", "lead_id", "job_type", "technician", "status", "scheduled_at", "completed_at", "revenue", "cost", "lead_source"],
-  revenue: ["transaction_id", "customer_id", "job_id", "amount", "payment_method", "paid_at"],
-  marketing_spend: ["date", "platform", "campaign", "impressions", "clicks", "spend", "leads", "conversions"]
-};
-
-const allowedTabs = ["dashboard", "sources", "ask", "reports", "recommendations", "settings"] as const;
-type AppTab = typeof allowedTabs[number];
-
-function normalizeTab(value: string | null | undefined): AppTab {
-  if (value && allowedTabs.includes(value as AppTab)) return value as AppTab;
-  return "dashboard";
-}
-
-function dateDaysAgo(days: number) {
-  const date = new Date();
-  date.setDate(date.getDate() - days);
-  return date.toISOString().slice(0, 10);
-}
-
-function isIsoDate(value: string) {
-  return /^\d{4}-\d{2}-\d{2}$/.test(value);
-}
-
-function isValidDateRange(start: string, end: string) {
-  const today = dateDaysAgo(0);
-  return isIsoDate(start) && isIsoDate(end) && start <= end && start <= today && end <= today;
-}
-
-function clampDateToToday(value: string) {
-  if (!isIsoDate(value)) return value;
-  const today = dateDaysAgo(0);
-  return value > today ? today : value;
-}
-
-function readUrlViewState() {
-  const params = new URLSearchParams(window.location.search);
-  const tab = params.get("tab");
-  const start = params.get("start");
-  const end = params.get("end");
-  const live = params.get("live");
-  return { tab, start, end, live };
-}
-
-function initialDateRange() {
-  const { start: startParam, end: endParam } = readUrlViewState();
-  if (startParam && endParam && isValidDateRange(startParam, endParam)) {
-    return { start: startParam, end: endParam };
-  }
-  const startSaved = localStorage.getItem("bp_range_start");
-  const endSaved = localStorage.getItem("bp_range_end");
-  if (startSaved && endSaved) return { start: startSaved, end: endSaved };
-  return { start: dateDaysAgo(29), end: dateDaysAgo(0) };
-}
-
-function dateRangeDaysAgo(days: number) {
-  return { start: dateDaysAgo(days - 1), end: dateDaysAgo(0) };
-}
-
-function shiftDateRange(start: string, end: string, direction: "backward" | "forward") {
-  const startDate = new Date(`${start}T00:00:00`);
-  const endDate = new Date(`${end}T00:00:00`);
-  const spanDays = Math.max(1, Math.round((endDate.getTime() - startDate.getTime()) / (24 * 60 * 60 * 1000)) + 1);
-  const delta = direction === "backward" ? -spanDays : spanDays;
-  startDate.setDate(startDate.getDate() + delta);
-  endDate.setDate(endDate.getDate() + delta);
-  return {
-    start: startDate.toISOString().slice(0, 10),
-    end: endDate.toISOString().slice(0, 10)
-  };
-}
-
-function shiftDateRangeWithoutFuture(start: string, end: string, direction: "backward" | "forward") {
-  const next = shiftDateRange(start, end, direction);
-  if (direction === "backward") return next;
-  const today = dateDaysAgo(0);
-  if (next.end <= today) return next;
-  return alignRangeToToday(start, end);
-}
-
-function alignRangeToToday(start: string, end: string) {
-  const startDate = new Date(`${start}T00:00:00`);
-  const endDate = new Date(`${end}T00:00:00`);
-  const spanDays = Math.max(1, Math.round((endDate.getTime() - startDate.getTime()) / (24 * 60 * 60 * 1000)) + 1);
-  const today = new Date();
-  const nextEnd = new Date(Date.UTC(today.getUTCFullYear(), today.getUTCMonth(), today.getUTCDate()));
-  const nextStart = new Date(nextEnd);
-  nextStart.setUTCDate(nextStart.getUTCDate() - (spanDays - 1));
-  return {
-    start: nextStart.toISOString().slice(0, 10),
-    end: nextEnd.toISOString().slice(0, 10)
-  };
-}
-
-function dateWindowDays(start: string, end: string) {
-  const startDate = new Date(`${start}T00:00:00`);
-  const endDate = new Date(`${end}T00:00:00`);
-  return Math.max(1, Math.round((endDate.getTime() - startDate.getTime()) / (24 * 60 * 60 * 1000)) + 1);
-}
-
-function canShiftForward(end: string) {
-  return end < dateDaysAgo(0);
-}
+import { allowedTabs, datasetTargetFields, datasetTypes, normalizeTab, type AppTab } from "./app/constants";
+import { alignRangeToToday, canShiftForward, clampDateToToday, dateDaysAgo, dateRangeDaysAgo, dateWindowDays, initialDateRange, isValidDateRange, readUrlViewState, shiftDateRangeWithoutFuture } from "./app/dateState";
+import { Empty, escapeCsv, formatLastUpdated, formatTimeToFirstInsight, Panel, StatusItem, summaryLine } from "./app/viewUtils";
 
 export function App() {
   const initialRange = initialDateRange();
@@ -1234,34 +1123,6 @@ function Dashboard({
   );
 }
 
-function formatTimeToFirstInsight(seconds: number | null, firstUploadAt: string | null) {
-  if (typeof seconds === "number") {
-    if (seconds < 60) return `${seconds}s`;
-    if (seconds < 3600) return `${Math.round(seconds / 60)}m`;
-    return `${(seconds / 3600).toFixed(1)}h`;
-  }
-  if (firstUploadAt) return "In progress";
-  return "Not started";
-}
-
-function formatLastUpdated(iso: string) {
-  const updated = new Date(iso);
-  const deltaSeconds = Math.max(0, Math.floor((Date.now() - updated.getTime()) / 1000));
-  if (deltaSeconds < 5) return "just now";
-  if (deltaSeconds < 60) return `${deltaSeconds}s ago`;
-  const deltaMinutes = Math.floor(deltaSeconds / 60);
-  if (deltaMinutes < 60) return `${deltaMinutes}m ago`;
-  const deltaHours = Math.floor(deltaMinutes / 60);
-  return `${deltaHours}h ago`;
-}
-
-function escapeCsv(value: string) {
-  if (value.includes(",") || value.includes("\"") || value.includes("\n")) {
-    return `"${value.replaceAll("\"", "\"\"")}"`;
-  }
-  return value;
-}
-
 function AskAI({
   start,
   end,
@@ -2104,37 +1965,4 @@ function Settings({ onSync, syncMessage, users, onUsersChanged }: { onSync: () =
       </Panel>
     </div>
   );
-}
-
-function Panel({ title, children }: { title: string; children: React.ReactNode }) {
-  return (
-    <section className="panel">
-      <h2>{title}</h2>
-      {children}
-    </section>
-  );
-}
-
-function StatusItem({ icon, title, meta, body }: { icon?: React.ReactNode; title: string; meta: string; body: string }) {
-  return (
-    <article className="status-item">
-      <div className="status-icon">{icon}</div>
-      <div>
-        <div className="status-title"><strong>{title}</strong><span>{meta}</span></div>
-        <p>{body}</p>
-      </div>
-    </article>
-  );
-}
-
-function Empty({ text }: { text: string }) {
-  return <div className="empty">{text}</div>;
-}
-
-function summaryLine(metrics: MetricsResponse) {
-  const revenue = metrics.cards.find((card) => card.name === "Total revenue");
-  const leads = metrics.cards.find((card) => card.name === "Leads");
-  const jobs = metrics.cards.find((card) => card.name === "Booked jobs");
-  const change = revenue?.deltaPct === null || revenue?.deltaPct === undefined ? "no prior baseline" : `${revenue.deltaPct.toFixed(1)}% vs prior`;
-  return `Revenue is ${revenue?.formatted ?? "$0"} with ${leads?.formatted ?? "0"} leads and ${jobs?.formatted ?? "0"} booked jobs, ${change}.`;
 }
