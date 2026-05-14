@@ -311,7 +311,7 @@ textarea { min-height: 110px; width: 100%; resize: vertical; }
 .table-head { color: #66746d; font-size: 13px; font-weight: 700; text-transform: uppercase; }
 .table-row { background: #f8faf8; border-radius: 8px; }
 .setup-table .table-head, .setup-table .table-row { grid-template-columns: 1.5fr 1fr; }
-.freshness-table .table-head, .freshness-table .table-row { grid-template-columns: 1.4fr 0.8fr 1fr; }
+.freshness-table .table-head, .freshness-table .table-row { grid-template-columns: 1.2fr 0.8fr 1fr 0.8fr; }
 .freshness-fresh { color: #176b5b; font-weight: 700; }
 .freshness-warning { color: #b57914; font-weight: 700; }
 .freshness-stale, .freshness-missing { color: #b9473d; font-weight: 700; }

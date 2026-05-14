@@ -232,7 +232,10 @@ export function App() {
         {refreshWarning ? <div className="notice">{refreshWarning}</div> : null}
         {loading && !metrics ? <Loading /> : null}
 
-        {metrics && active === "dashboard" ? <Dashboard metrics={metrics} uploads={uploads} alerts={alerts} recommendations={recommendations} onboarding={onboarding} onOpenSources={() => setActive("sources")} onOpenAsk={(question) => { setAskSeed(question); setAskAutoRun(true); setActive("ask"); }} /> : null}
+        {metrics && active === "dashboard" ? <Dashboard metrics={metrics} uploads={uploads} alerts={alerts} recommendations={recommendations} onboarding={onboarding} onOpenSources={(dataset) => {
+          if (dataset) localStorage.setItem("bp_sources_dataset_type", dataset);
+          setActive("sources");
+        }} onOpenAsk={(question) => { setAskSeed(question); setAskAutoRun(true); setActive("ask"); }} /> : null}
         {metrics && active === "ask" ? <AskAI start={start} end={end} seedQuestion={askSeed} autoRunSeed={askAutoRun} onAutoRunComplete={() => setAskAutoRun(false)} onRecommendationSaved={refresh} /> : null}
         {active === "sources" ? <DataSources uploads={uploads} onboarding={onboarding} refresh={refresh} /> : null}
         {active === "reports" ? <Reports reports={reports} start={start} end={end} refresh={refresh} /> : null}
@@ -428,7 +431,7 @@ function Dashboard({
   alerts: Array<{ title: string; severity: string; description: string }>;
   recommendations: Recommendation[];
   onboarding: OnboardingStatus | null;
-  onOpenSources: () => void;
+  onOpenSources: (dataset?: DatasetType) => void;
   onOpenAsk: (question: string) => void;
 }) {
   const requiredDatasets: DatasetType[] = ["jobs", "leads", "revenue", "marketing_spend"];
@@ -512,7 +515,7 @@ function Dashboard({
           {staleOrMissingCount} stale or missing core datasets, {metrics.qualityIssues.length} quality issues currently affecting reliability.
         </p>
         {(staleOrMissingCount > 0 || metrics.qualityIssues.length > 0) ? (
-          <button className="align-start" onClick={onOpenSources}>Resolve In Data Sources</button>
+          <button className="align-start" onClick={() => onOpenSources()}>Resolve In Data Sources</button>
         ) : null}
       </section>
       <section className="panel setup-panel">
@@ -541,7 +544,7 @@ function Dashboard({
         </div>
         <p><strong>Time to first insight:</strong> {timeToFirstInsight}</p>
         <div className="upload-row">
-          <button className="primary" onClick={onOpenSources}>Go To Data Sources</button>
+          <button className="primary" onClick={() => onOpenSources()}>Go To Data Sources</button>
           <button onClick={exportKpisCsv}>Export KPI CSV</button>
           <button onClick={exportDashboardSummaryCsv}>Export Dashboard Summary</button>
           {staleDatasets.length ? <button onClick={() => onOpenAsk(`Which actions should we take first to reduce risk from stale datasets: ${staleDatasets.join(", ")}?`)}>Investigate Staleness</button> : null}
@@ -613,12 +616,13 @@ function Dashboard({
             <span className="freshness-stale">Stale: 14+d</span>
           </div>
           <div className="table freshness-table">
-            <div className="table-head"><span>Dataset</span><span>Status</span><span>Last upload</span></div>
+            <div className="table-head"><span>Dataset</span><span>Status</span><span>Last upload</span><span>Action</span></div>
             {freshnessRows.map((row) => (
               <div className="table-row" key={row.dataset}>
                 <span>{row.dataset.replace("_", " ")}</span>
                 <span className={`freshness-${row.freshness}`}>{row.status}</span>
                 <span>{row.updated}</span>
+                <button onClick={() => onOpenSources(row.dataset)}>Refresh Now</button>
               </div>
             ))}
           </div>
