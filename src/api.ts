@@ -1,6 +1,8 @@
 import type { AiAnswer, Alert, ColumnMapping, CsvPreview, DatasetType, FileUpload, MetricsResponse, Organization, Recommendation, Report } from "../shared/types";
 
 const TOKEN_KEY = "bp_token";
+const REQUEST_TIMEOUT_MS = 15000;
+const RETRYABLE_METHODS = new Set(["GET"]);
 
 function getToken() {
   return localStorage.getItem(TOKEN_KEY) ?? "";
@@ -13,20 +15,50 @@ export function clearToken() {
 }
 
 async function request<T>(path: string, init?: RequestInit): Promise<T> {
+  const method = (init?.method ?? "GET").toUpperCase();
+  const retries = RETRYABLE_METHODS.has(method) ? 1 : 0;
+  let attempt = 0;
+  while (true) {
+    try {
+      return await requestOnce<T>(path, init);
+    } catch (error) {
+      if (attempt >= retries || !isRetryableError(error)) throw error;
+      attempt += 1;
+      await sleep(250 * attempt);
+    }
+  }
+}
+
+async function requestOnce<T>(path: string, init?: RequestInit): Promise<T> {
   const token = getToken();
+  const controller = new AbortController();
+  const timeout = window.setTimeout(() => controller.abort(), REQUEST_TIMEOUT_MS);
   const response = await fetch(`/api${path}`, {
     ...init,
+    signal: controller.signal,
     headers: {
       ...(token ? { Authorization: `Bearer ${token}` } : {}),
       ...(init?.body instanceof FormData ? {} : { "Content-Type": "application/json" }),
       ...init?.headers
     }
+  }).finally(() => {
+    window.clearTimeout(timeout);
   });
   if (!response.ok) {
     const body = (await response.json().catch(() => ({}))) as { error?: string };
     throw new Error(body.error ?? `Request failed: ${response.status}`);
   }
   return response.json() as Promise<T>;
+}
+
+function isRetryableError(error: unknown) {
+  if (!(error instanceof Error)) return false;
+  if (error.name === "AbortError") return true;
+  return /network|failed to fetch/i.test(error.message);
+}
+
+function sleep(ms: number) {
+  return new Promise((resolve) => window.setTimeout(resolve, ms));
 }
 
 export function login(email: string, password: string) {
