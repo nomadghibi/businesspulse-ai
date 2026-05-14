@@ -909,10 +909,30 @@ function Reports({ reports, start, end, refresh }: { reports: Report[]; start: s
 }
 
 function Recommendations({ recommendations }: { recommendations: Recommendation[] }) {
+  const [priorityFilter, setPriorityFilter] = useState<"all" | "high" | "medium" | "low">("all");
+  const [query, setQuery] = useState("");
+  const filtered = recommendations.filter((rec) => {
+    const byPriority = priorityFilter === "all" || rec.priority === priorityFilter;
+    const q = query.trim().toLowerCase();
+    const byQuery = !q || rec.title.toLowerCase().includes(q) || rec.description.toLowerCase().includes(q) || rec.expectedImpact.toLowerCase().includes(q);
+    return byPriority && byQuery;
+  });
+
   return (
     <Panel title="Prioritized Actions">
+      <div className="upload-row">
+        <select value={priorityFilter} onChange={(event) => setPriorityFilter(event.target.value as "all" | "high" | "medium" | "low")}>
+          <option value="all">All priorities</option>
+          <option value="high">High</option>
+          <option value="medium">Medium</option>
+          <option value="low">Low</option>
+        </select>
+        <input value={query} onChange={(event) => setQuery(event.target.value)} placeholder="Search recommendations" />
+        <span>{filtered.length} of {recommendations.length} shown</span>
+      </div>
       <div className="list">
-        {recommendations.map((rec) => <StatusItem key={rec.id} title={rec.title} meta={rec.priority} body={`${rec.description} Expected impact: ${rec.expectedImpact}`} />)}
+        {filtered.map((rec) => <StatusItem key={rec.id} title={rec.title} meta={rec.priority} body={`${rec.description} Expected impact: ${rec.expectedImpact}`} />)}
+        {!filtered.length ? <Empty text="No recommendations match this filter." /> : null}
       </div>
     </Panel>
   );
