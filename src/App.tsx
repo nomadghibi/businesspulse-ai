@@ -33,6 +33,10 @@ function initialDateRange() {
   return { start: dateDaysAgo(29), end: dateDaysAgo(0) };
 }
 
+function dateRangeDaysAgo(days: number) {
+  return { start: dateDaysAgo(days - 1), end: dateDaysAgo(0) };
+}
+
 export function App() {
   const initialRange = initialDateRange();
   const [org, setOrg] = useState<Organization | null>(null);
@@ -61,6 +65,7 @@ export function App() {
   const [passwordMessage, setPasswordMessage] = useState("");
 
   async function refresh(options?: { silent?: boolean }) {
+    if (start > end) return;
     if (refreshInFlight.current) return;
     refreshInFlight.current = true;
     const silent = options?.silent ?? false;
@@ -111,6 +116,15 @@ export function App() {
   useEffect(() => {
     if (authed && !mustChangePassword) void refresh();
   }, [start, end, authed, mustChangePassword]);
+
+  useEffect(() => {
+    if (!start || !end) return;
+    if (start > end) {
+      setError("Start date must be on or before end date.");
+      return;
+    }
+    if (error === "Start date must be on or before end date.") setError(null);
+  }, [start, end]);
 
   useEffect(() => {
     localStorage.setItem("bp_active_tab", active);
@@ -169,6 +183,9 @@ export function App() {
             <p>{lastUpdatedAt ? `Last updated ${formatLastUpdated(lastUpdatedAt)}` : "Last updated pending"}</p>
           </div>
           <div className="date-controls">
+            <button onClick={() => { const next = dateRangeDaysAgo(7); setStart(next.start); setEnd(next.end); }}>7d</button>
+            <button onClick={() => { const next = dateRangeDaysAgo(30); setStart(next.start); setEnd(next.end); }}>30d</button>
+            <button onClick={() => { const next = dateRangeDaysAgo(90); setStart(next.start); setEnd(next.end); }}>90d</button>
             <input type="date" value={start} onChange={(event) => setStart(event.target.value)} />
             <input type="date" value={end} onChange={(event) => setEnd(event.target.value)} />
             <button onClick={() => void refresh({ silent: true })} disabled={refreshing}>
