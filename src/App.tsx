@@ -1189,6 +1189,10 @@ function Recommendations({
     const byQuery = !q || rec.title.toLowerCase().includes(q) || rec.description.toLowerCase().includes(q) || rec.expectedImpact.toLowerCase().includes(q);
     return byPriority && byStatus && byQuery;
   });
+  const statusCounts = recommendations.reduce<Record<string, number>>((acc, rec) => {
+    acc[rec.status] = (acc[rec.status] ?? 0) + 1;
+    return acc;
+  }, {});
 
   useEffect(() => {
     localStorage.setItem("bp_recommendations_priority", priorityFilter);
@@ -1222,6 +1226,13 @@ function Recommendations({
 
   return (
     <Panel title="Prioritized Actions">
+      <div className="upload-row">
+        <span>New: {statusCounts.new ?? 0}</span>
+        <span>Accepted: {statusCounts.accepted ?? 0}</span>
+        <span>Completed: {statusCounts.completed ?? 0}</span>
+        <span>Dismissed: {statusCounts.dismissed ?? 0}</span>
+        <span>Rejected: {statusCounts.rejected ?? 0}</span>
+      </div>
       <div className="upload-row">
         <select value={priorityFilter} onChange={(event) => setPriorityFilter(event.target.value as "all" | "high" | "medium" | "low")}>
           <option value="all">All priorities</option>
