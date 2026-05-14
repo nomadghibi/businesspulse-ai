@@ -158,6 +158,10 @@ export function App() {
   const [showShortcuts, setShowShortcuts] = useState(false);
   const [shortcutsCopied, setShortcutsCopied] = useState(false);
   const [viewLinkMessage, setViewLinkMessage] = useState<string | null>(null);
+  const [liveRefreshEnabled, setLiveRefreshEnabled] = useState(() => {
+    const raw = localStorage.getItem("bp_live_refresh_enabled");
+    return raw == null ? true : raw === "true";
+  });
   const windowDays = useMemo(() => dateWindowDays(start, end), [start, end]);
   const forwardEnabled = useMemo(() => canShiftForward(end), [end]);
   const hasInvalidRange = start > end;
@@ -246,6 +250,10 @@ export function App() {
   }, [active]);
 
   useEffect(() => {
+    localStorage.setItem("bp_live_refresh_enabled", liveRefreshEnabled ? "true" : "false");
+  }, [liveRefreshEnabled]);
+
+  useEffect(() => {
     if (!isValidDateRange(start, end)) return;
     localStorage.setItem("bp_range_start", start);
     localStorage.setItem("bp_range_end", end);
@@ -282,12 +290,12 @@ export function App() {
   }, []);
 
   useEffect(() => {
-    if (!authed || mustChangePassword) return;
+    if (!authed || mustChangePassword || !liveRefreshEnabled) return;
     const interval = window.setInterval(() => {
       void refresh({ silent: true });
     }, 60_000);
     return () => window.clearInterval(interval);
-  }, [authed, mustChangePassword, start, end]);
+  }, [authed, mustChangePassword, start, end, liveRefreshEnabled]);
 
   useEffect(() => {
     if (!authed) return;
@@ -489,6 +497,9 @@ export function App() {
             />
             <button onClick={() => void refresh({ silent: true })} disabled={refreshing || hasInvalidRange}>
               {refreshing ? "Refreshing..." : "Refresh"}
+            </button>
+            <button onClick={() => setLiveRefreshEnabled((prev) => !prev)}>
+              Live Refresh: {liveRefreshEnabled ? "On" : "Off"}
             </button>
             {hasInvalidRange ? (
               <button
