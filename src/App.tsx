@@ -26,7 +26,15 @@ function dateDaysAgo(days: number) {
   return date.toISOString().slice(0, 10);
 }
 
+function initialDateRange() {
+  const startSaved = localStorage.getItem("bp_range_start");
+  const endSaved = localStorage.getItem("bp_range_end");
+  if (startSaved && endSaved) return { start: startSaved, end: endSaved };
+  return { start: dateDaysAgo(29), end: dateDaysAgo(0) };
+}
+
 export function App() {
+  const initialRange = initialDateRange();
   const [org, setOrg] = useState<Organization | null>(null);
   const [metrics, setMetrics] = useState<MetricsResponse | null>(null);
   const [uploads, setUploads] = useState<FileUpload[]>([]);
@@ -35,8 +43,8 @@ export function App() {
   const [recommendations, setRecommendations] = useState<Recommendation[]>([]);
   const [alerts, setAlerts] = useState<Array<{ title: string; severity: string; description: string }>>([]);
   const [active, setActive] = useState(() => localStorage.getItem("bp_active_tab") ?? "dashboard");
-  const [start, setStart] = useState(dateDaysAgo(29));
-  const [end, setEnd] = useState(dateDaysAgo(0));
+  const [start, setStart] = useState(initialRange.start);
+  const [end, setEnd] = useState(initialRange.end);
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
   const [lastUpdatedAt, setLastUpdatedAt] = useState<string | null>(null);
@@ -46,7 +54,7 @@ export function App() {
   const [authed, setAuthed] = useState(Boolean(localStorage.getItem("bp_token")));
   const [syncMessage, setSyncMessage] = useState<string>("");
   const [users, setUsers] = useState<AppUser[]>([]);
-  const [enteredApp, setEnteredApp] = useState(false);
+  const [enteredApp, setEnteredApp] = useState(Boolean(localStorage.getItem("bp_token")));
   const [mustChangePassword, setMustChangePassword] = useState(false);
   const [currentPassword, setCurrentPassword] = useState("");
   const [nextPassword, setNextPassword] = useState("");
@@ -109,6 +117,11 @@ export function App() {
   }, [active]);
 
   useEffect(() => {
+    localStorage.setItem("bp_range_start", start);
+    localStorage.setItem("bp_range_end", end);
+  }, [start, end]);
+
+  useEffect(() => {
     if (!authed || mustChangePassword) return;
     const interval = window.setInterval(() => {
       void refresh({ silent: true });
@@ -164,6 +177,7 @@ export function App() {
             <button onClick={async () => {
               try { await logout(); } catch {}
               clearToken();
+              localStorage.removeItem("bp_active_tab");
               setAuthed(false);
               setEnteredApp(false);
             }}>Logout</button>
