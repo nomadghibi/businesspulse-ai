@@ -124,7 +124,18 @@ export function App() {
   const [askAutoRun, setAskAutoRun] = useState(false);
   const [showShortcuts, setShowShortcuts] = useState(false);
   const [shortcutsCopied, setShortcutsCopied] = useState(false);
+  const [viewLinkMessage, setViewLinkMessage] = useState<string | null>(null);
   const windowDays = useMemo(() => dateWindowDays(start, end), [start, end]);
+
+  async function copyCurrentViewLink() {
+    const url = `${window.location.origin}${window.location.pathname}?tab=${encodeURIComponent(active)}&start=${encodeURIComponent(start)}&end=${encodeURIComponent(end)}`;
+    try {
+      await navigator.clipboard.writeText(url);
+      setViewLinkMessage("View link copied.");
+    } catch {
+      setViewLinkMessage("Unable to copy link in this browser.");
+    }
+  }
 
   async function refresh(options?: { silent?: boolean }) {
     if (start > end) return;
@@ -196,6 +207,12 @@ export function App() {
     localStorage.setItem("bp_range_start", start);
     localStorage.setItem("bp_range_end", end);
   }, [start, end]);
+
+  useEffect(() => {
+    if (!viewLinkMessage) return;
+    const timeout = window.setTimeout(() => setViewLinkMessage(null), 2400);
+    return () => window.clearTimeout(timeout);
+  }, [viewLinkMessage]);
 
   useEffect(() => {
     const params = new URLSearchParams(window.location.search);
@@ -329,6 +346,7 @@ export function App() {
             <p>Revenue, leads, jobs, conversion, and marketing performance.</p>
             <p>{lastUpdatedAt ? `Last updated ${formatLastUpdated(lastUpdatedAt)}` : "Last updated pending"}</p>
             <p>Window: {windowDays} day{windowDays === 1 ? "" : "s"}</p>
+            {viewLinkMessage ? <p>{viewLinkMessage}</p> : null}
           </div>
           <div className="date-controls">
             <button onClick={() => { const next = shiftDateRange(start, end, "backward"); setStart(next.start); setEnd(next.end); }}>Back 1 Period</button>
@@ -339,6 +357,7 @@ export function App() {
             <button className={activePreset === "12m" ? "range-active" : ""} onClick={() => { const next = dateRangeDaysAgo(365); setStart(next.start); setEnd(next.end); }}>12m</button>
             <button onClick={() => { const next = alignRangeToToday(start, end); setStart(next.start); setEnd(next.end); }}>Today</button>
             <button onClick={() => { const next = dateRangeDaysAgo(30); setStart(next.start); setEnd(next.end); }}>Reset 30d</button>
+            <button onClick={() => void copyCurrentViewLink()}>Copy View Link</button>
             <input aria-label="Start date" type="date" value={start} onChange={(event) => setStart(event.target.value)} />
             <input aria-label="End date" type="date" value={end} onChange={(event) => setEnd(event.target.value)} />
             <button onClick={() => void refresh({ silent: true })} disabled={refreshing}>
