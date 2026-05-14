@@ -544,6 +544,9 @@ function Dashboard({
             <small className={card.deltaPct === null ? "" : card.deltaPct < 0 ? "negative" : "positive"}>
               {card.deltaPct === null ? "No prior baseline" : `${card.deltaPct.toFixed(1)}% vs prior`}
             </small>
+            <button className="align-start" onClick={() => onOpenAsk(`Analyze ${card.name}. Current value is ${card.formatted}. Explain main drivers, risks, and the first action we should take this week.`)}>
+              Use In Ask AI
+            </button>
           </article>
         ))}
       </section>
