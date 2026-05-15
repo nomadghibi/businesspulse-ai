@@ -70,11 +70,26 @@ curl -X POST http://localhost:5055/api/integrations/stripe/webhook \
 ```bash
 npm run build
 npm test
+npm run test:e2e
 ```
 
 Client reliability behavior:
 - Frontend API requests use a 15s timeout.
 - Read-only requests (`GET`) retry once on timeout or transient network failure.
+
+## Observability And Ops
+
+- Request tracing:
+  - `x-request-id` accepted on incoming requests or generated server-side
+  - echoed back on responses
+- Structured logs:
+  - `http_request` events with method, path, status, duration
+  - `request_failure` events with request id and sanitized error text
+- Operational metrics endpoint:
+  - `GET /api/ops/metrics` (owner/admin token required)
+  - includes uptime, status-class counters, 5xx counts, active guard buckets, hottest paths
+- Runbook:
+  - See [docs/OPERATIONS_RUNBOOK.md](./docs/OPERATIONS_RUNBOOK.md) for thresholds and incident response workflow
 
 ## Conversion And Analytics
 
