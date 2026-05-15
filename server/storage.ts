@@ -1,7 +1,7 @@
 import { Pool } from "pg";
 import type { AgentRun, Organization } from "../shared/types";
-import { DEMO_ORG_ID, now } from "./utils";
-import { getOrgData as getMemoryOrgData, organizations, seedOrg, type OrgData } from "./store";
+import { DEMO_ORG_ID, now } from "./utils.js";
+import { getOrgData as getMemoryOrgData, organizations, seedOrg, type OrgData } from "./store.js";
 import { createHash, randomBytes } from "node:crypto";
 import { readFile } from "node:fs/promises";
 import { resolve } from "node:path";

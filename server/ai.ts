@@ -1,7 +1,7 @@
 import type { AiAnswer, DatasetType, MetricsResponse } from "../shared/types";
 import type { AgentRun } from "../shared/types";
-import type { OrgData } from "./store";
-import { formatCurrency, id, inPeriod, now } from "./utils";
+import type { OrgData } from "./store.js";
+import { formatCurrency, id, inPeriod, now } from "./utils.js";
 
 export async function answerQuestion(params: {
   organizationId: string;

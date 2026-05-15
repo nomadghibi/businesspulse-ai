@@ -1,6 +1,6 @@
 import type { Alert, DatasetType, MetricsResponse, Period, Recommendation, Report } from "../shared/types";
-import type { OrgData } from "./store";
-import { formatCurrency, formatPct, id, inPeriod, now, pctChange, previousPeriod } from "./utils";
+import type { OrgData } from "./store.js";
+import { formatCurrency, formatPct, id, inPeriod, now, pctChange, previousPeriod } from "./utils.js";
 
 function sum(values: number[]) {
   return values.reduce((total, value) => total + value, 0);

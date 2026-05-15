@@ -4,13 +4,13 @@ import cors from "cors";
 import express from "express";
 import multer from "multer";
 import { z } from "zod";
-import { answerQuestion } from "./ai";
-import { ingestCsv, previewCsv } from "./csv";
-import { validateRuntimeEnv } from "./env";
-import { calculateMetrics, generateAlerts, generateRecommendations, generateReport } from "./metrics";
-import { verifyStripeWebhookSignature } from "./stripeWebhook";
-import { type AuthRole, getStorage } from "./storage";
-import { defaultPeriod } from "./utils";
+import { answerQuestion } from "./ai.js";
+import { ingestCsv, previewCsv } from "./csv.js";
+import { validateRuntimeEnv } from "./env.js";
+import { calculateMetrics, generateAlerts, generateRecommendations, generateReport } from "./metrics.js";
+import { verifyStripeWebhookSignature } from "./stripeWebhook.js";
+import { type AuthRole, getStorage } from "./storage.js";
+import { defaultPeriod } from "./utils.js";
 
 const app = express();
 const upload = multer({ storage: multer.memoryStorage(), limits: { fileSize: 5 * 1024 * 1024 } });
@@ -30,7 +30,22 @@ const opsCounters = {
 };
 const MAX_USERS_BY_PLAN: Record<string, number> = { starter: 3, growth: 15, pro: 1000 };
 
-validateRuntimeEnv();
+let initialized = false;
+let initializePromise: Promise<void> | null = null;
+
+async function initializeServer() {
+  if (initialized) return;
+  if (initializePromise) {
+    await initializePromise;
+    return;
+  }
+  initializePromise = (async () => {
+    validateRuntimeEnv();
+    await storage.initialize();
+    initialized = true;
+  })();
+  await initializePromise;
+}
 
 app.use((req, res, next) => {
   const incoming = req.header("x-request-id");
@@ -753,13 +768,20 @@ app.use((error: unknown, req: express.Request, res: express.Response, _next: exp
   res.status(statusCode).json({ error: clientMessage, requestId });
 });
 
-void (async () => {
-  await storage.initialize();
-  app.listen(port, () => {
-    const mode = process.env.DATABASE_URL ? "postgres" : "memory";
-    console.log(`BusinessPulse AI API listening on http://localhost:${port} (${mode} mode)`);
-  });
-})();
+export { app };
+export async function ensureInitialized() {
+  await initializeServer();
+}
+
+if (!process.env.VERCEL) {
+  void (async () => {
+    await ensureInitialized();
+    app.listen(port, () => {
+      const mode = process.env.DATABASE_URL ? "postgres" : "memory";
+      console.log(`BusinessPulse AI API listening on http://localhost:${port} (${mode} mode)`);
+    });
+  })();
+}
 
 function org(req: express.Request) {
   return String(Reflect.get(req, "organizationId"));

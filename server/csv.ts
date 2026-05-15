@@ -1,8 +1,8 @@
 import Papa from "papaparse";
 import { z } from "zod";
 import type { ColumnMapping, CsvPreview, DatasetType, FileUpload } from "../shared/types";
-import { id, now, toDate, toDateOnly, toNumber } from "./utils";
-import type { OrgData } from "./store";
+import { id, now, toDate, toDateOnly, toNumber } from "./utils.js";
+import type { OrgData } from "./store.js";
 
 const datasetSchema = z.enum(["customers", "leads", "jobs", "revenue", "marketing_spend"]);
 

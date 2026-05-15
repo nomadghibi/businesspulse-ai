@@ -12,7 +12,7 @@ import type {
   Report,
   RevenueTransaction
 } from "../shared/types";
-import { DEMO_ORG_ID, id, now } from "./utils";
+import { DEMO_ORG_ID, id, now } from "./utils.js";
 
 export interface OrgData {
   customers: Customer[];
