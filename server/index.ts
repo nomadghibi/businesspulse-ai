@@ -736,6 +736,7 @@ app.post("/api/integrations/stripe/sync", async (req, res, next) => {
 
 app.use((error: unknown, req: express.Request, res: express.Response, _next: express.NextFunction) => {
   const err = error as { message?: string; status?: number };
+  const statusCode = err.status ?? 500;
   const safeMessage = sanitizeErrorMessage(err.message ?? "Unexpected server error");
   const requestId = String(Reflect.get(req, "requestId") ?? "");
   console.error(JSON.stringify({
@@ -745,10 +746,11 @@ app.use((error: unknown, req: express.Request, res: express.Response, _next: exp
     requestId,
     method: req.method,
     path: req.path,
-    statusCode: err.status ?? 500,
+    statusCode,
     message: safeMessage
   }));
-  res.status(err.status ?? 500).json({ error: safeMessage, requestId });
+  const clientMessage = statusCode >= 500 ? "Unexpected server error" : safeMessage;
+  res.status(statusCode).json({ error: clientMessage, requestId });
 });
 
 void (async () => {
