@@ -1850,6 +1850,34 @@ function Settings({ onSync, syncMessage, users, onUsersChanged }: { onSync: () =
     }
   }
 
+  function exportOpsMetricsCsv() {
+    if (!opsMetrics) return;
+    const lines = [
+      "section,key,value",
+      `overview,started_at,${opsMetrics.startedAt}`,
+      `overview,uptime_seconds,${opsMetrics.uptimeSeconds}`,
+      `requests,total,${opsMetrics.requests.total}`,
+      `requests,errors_5xx,${opsMetrics.requests.errors5xx}`,
+      `requests,status_2xx,${opsMetrics.requests.byStatusClass["2xx"]}`,
+      `requests,status_3xx,${opsMetrics.requests.byStatusClass["3xx"]}`,
+      `requests,status_4xx,${opsMetrics.requests.byStatusClass["4xx"]}`,
+      `requests,status_5xx,${opsMetrics.requests.byStatusClass["5xx"]}`,
+      `guards,login_attempt_buckets,${opsMetrics.activeGuards.loginAttemptBuckets}`,
+      `guards,public_rate_limit_buckets,${opsMetrics.activeGuards.publicRateLimitBuckets}`,
+      `guards,in_flight_webhook_events,${opsMetrics.activeGuards.inFlightWebhookEvents}`,
+      ...opsMetrics.hottestPaths.map((row) => `hottest_paths,${escapeCsv(row.path)},${row.count}`)
+    ];
+    const blob = new Blob([lines.join("\n")], { type: "text/csv;charset=utf-8" });
+    const url = URL.createObjectURL(blob);
+    const anchor = document.createElement("a");
+    anchor.href = url;
+    anchor.download = `ops-metrics-${new Date().toISOString().slice(0, 10)}.csv`;
+    document.body.appendChild(anchor);
+    anchor.click();
+    anchor.remove();
+    URL.revokeObjectURL(url);
+  }
+
   const opsHealth = useMemo(() => {
     if (!opsMetrics || opsMetrics.requests.total === 0) {
       return { level: "ok" as const, summary: "No traffic yet." };
@@ -2002,6 +2030,7 @@ function Settings({ onSync, syncMessage, users, onUsersChanged }: { onSync: () =
             <button onClick={() => void refreshOpsMetrics()} disabled={opsBusy}>
               {opsBusy ? "Refreshing..." : "Refresh Ops Metrics"}
             </button>
+            <button onClick={exportOpsMetricsCsv} disabled={!opsMetrics}>Export Ops CSV</button>
             {opsMetrics ? <span>Uptime: {Math.floor(opsMetrics.uptimeSeconds / 60)}m</span> : null}
           </div>
           {opsError ? <div className="notice">{opsError}</div> : null}
