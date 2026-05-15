@@ -1810,6 +1810,7 @@ function Settings({ onSync, syncMessage, users, onUsersChanged }: { onSync: () =
   const [inviteEmail, setInviteEmail] = useState("");
   const [inviteRole, setInviteRole] = useState<"owner" | "admin" | "viewer">("viewer");
   const [invitePassword, setInvitePassword] = useState("changeme123");
+  const [inviteMessage, setInviteMessage] = useState("");
   const [busy, setBusy] = useState(false);
   const [billingMsg, setBillingMsg] = useState("");
   const [opsMetrics, setOpsMetrics] = useState<OpsMetricsResponse | null>(null);
@@ -1928,11 +1929,17 @@ function Settings({ onSync, syncMessage, users, onUsersChanged }: { onSync: () =
             </select>
             <input value={invitePassword} onChange={(event) => setInvitePassword(event.target.value)} placeholder="temporary password" />
             <button className="primary" onClick={async () => {
-              await inviteUser(inviteEmail, inviteRole, invitePassword);
-              setInviteEmail("");
-              await onUsersChanged();
+              try {
+                await inviteUser(inviteEmail, inviteRole, invitePassword);
+                setInviteEmail("");
+                setInviteMessage(`Invite sent to ${inviteEmail}.`);
+                await onUsersChanged();
+              } catch (error) {
+                setInviteMessage(error instanceof Error ? error.message : "Failed to invite user.");
+              }
             }}>Invite</button>
           </div>
+          {inviteMessage ? <div className="notice">{inviteMessage}</div> : null}
           <div className="upload-row">
             <input value={userQuery} onChange={(event) => setUserQuery(event.target.value)} placeholder="Search users by email" />
             <select value={statusFilter} onChange={(event) => setStatusFilter(event.target.value as "all" | "active" | "disabled")}>
