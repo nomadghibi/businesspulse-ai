@@ -13,7 +13,8 @@
     "start:web": "vite preview --host 0.0.0.0 --port 5173",
     "build": "tsc --noEmit && vite build",
     "preview": "vite preview --host 0.0.0.0",
-    "test": "tsx tests/metrics.test.ts && tsx tests/security.test.ts && tsx tests/stripe-webhook.test.ts && tsx tests/auth-gate.test.ts && tsx tests/public-rate-limit.test.ts && tsx tests/onboarding-status.test.ts"
+    "test": "tsx tests/metrics.test.ts && tsx tests/security.test.ts && tsx tests/stripe-webhook.test.ts && tsx tests/auth-gate.test.ts && tsx tests/public-rate-limit.test.ts && tsx tests/onboarding-status.test.ts",
+    "test:e2e": "playwright test"
   },
   "dependencies": {
     "@types/cors": "^2.8.19",
@@ -44,5 +45,8 @@
     "typescript": "^6.0.3",
     "vite": "^8.0.12",
     "zod": "^4.4.3"
+  },
+  "devDependencies": {
+    "@playwright/test": "^1.54.2"
   }
 }
