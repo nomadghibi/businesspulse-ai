@@ -20,6 +20,96 @@ button { cursor: pointer; }
 .login-shell {
   min-height: 100vh;
   background: linear-gradient(135deg, #eef4eb 0%, #f7f5ee 55%, #e6f0ee 100%);
+  display: grid;
+  place-items: center;
+  padding: 28px;
+}
+
+.login-layout {
+  width: min(1040px, 100%);
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) minmax(360px, 420px);
+  gap: 18px;
+  align-items: stretch;
+}
+
+.login-aside {
+  background: #0f271f;
+  color: #e8f2ee;
+  border: 1px solid #25483d;
+  border-radius: 8px;
+  padding: 28px;
+  display: grid;
+  align-content: start;
+  gap: 14px;
+}
+
+.login-aside h1 {
+  font-size: 34px;
+  margin-bottom: 8px;
+}
+
+.login-aside p,
+.login-aside .bullets {
+  color: #b8cbc3;
+}
+
+.login-card {
+  display: grid;
+  gap: 16px;
+}
+
+.login-tabs {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 8px;
+}
+
+.login-tabs button {
+  border: 1px solid #cdd8d2;
+  background: #ffffff;
+  color: #34423d;
+  border-radius: 8px;
+  min-height: 40px;
+}
+
+.login-field {
+  display: grid;
+  gap: 6px;
+}
+
+.login-field span {
+  color: #44534d;
+  font-size: 13px;
+  font-weight: 700;
+}
+
+.input-icon {
+  display: grid;
+  grid-template-columns: 20px minmax(0, 1fr) auto;
+  align-items: center;
+  gap: 8px;
+  border: 1px solid #cdd8d2;
+  background: #ffffff;
+  border-radius: 8px;
+  padding: 0 10px;
+}
+
+.input-icon input {
+  border: 0;
+  padding: 10px 0;
+  min-width: 0;
+}
+
+.icon-btn {
+  border: 0;
+  background: transparent;
+  color: #4f5f58;
+  padding: 0;
+  width: 28px;
+  height: 28px;
+  display: grid;
+  place-items: center;
 }
 
 .landing-shell {
@@ -367,6 +457,7 @@ textarea { min-height: 110px; width: 100%; resize: vertical; }
 }
 
 @media (max-width: 980px) {
+  .login-layout { grid-template-columns: 1fr; }
   .app-shell { grid-template-columns: 1fr; }
   .sidebar { position: static; }
   nav { grid-template-columns: repeat(2, minmax(0, 1fr)); }

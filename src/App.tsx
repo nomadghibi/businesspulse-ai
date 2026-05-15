@@ -1,8 +1,8 @@
-import { AlertTriangle, ArrowRight, BarChart3, Bot, CheckCircle2, Database, FileText, Lightbulb, Loader2, Upload } from "lucide-react";
+import { AlertTriangle, ArrowRight, BarChart3, Bot, CheckCircle2, Database, Eye, EyeOff, FileText, Lightbulb, Loader2, Lock, Mail, Upload } from "lucide-react";
 import { useEffect, useMemo, useRef, useState } from "react";
 import { Area, AreaChart, Bar, BarChart, CartesianGrid, ResponsiveContainer, Tooltip, XAxis, YAxis } from "recharts";
 import type { AiAnswer, ColumnMapping, CsvPreview, DatasetType, FileUpload, MetricsResponse, Organization, Recommendation, Report } from "../shared/types";
-import { askAi, changePassword, clearToken, commitUploadCsv, createCheckout, createRecommendationFromAnswer, type AppUser, generateReport, getAlerts, getMetrics, getOnboardingStatus, getOpsMetrics, getOrganization, getRecommendations, getReports, getUploads, getUsers, inviteUser, login, logout, type OnboardingStatus, type OpsMetricsResponse, previewUploadCsv, requestDemo, setToken, startTrial, syncStripe, trackEvent, trackPublicEvent, updateRecommendationStatus, updateUserRole, updateUserStatus } from "./api";
+import { askAi, changePassword, clearToken, commitUploadCsv, createCheckout, createRecommendationFromAnswer, type AppUser, generateReport, getAlerts, getMetrics, getOnboardingStatus, getOpsMetrics, getOrganization, getRecommendations, getReports, getUploads, getUsers, inviteUser, login, logout, type OnboardingStatus, type OpsMetricsResponse, previewUploadCsv, requestDemo, requestPasswordReset, setToken, startTrial, syncStripe, trackEvent, trackPublicEvent, updateRecommendationStatus, updateUserRole, updateUserStatus } from "./api";
 import { allowedTabs, datasetTargetFields, datasetTypes, normalizeTab, type AppTab } from "./app/constants";
 import { alignRangeToToday, canShiftForward, clampDateToToday, dateDaysAgo, dateRangeDaysAgo, dateWindowDays, initialDateRange, isValidDateRange, readUrlViewState, shiftDateRangeWithoutFuture } from "./app/dateState";
 import { Empty, escapeCsv, formatLastUpdated, formatTimeToFirstInsight, Panel, StatusItem, summaryLine } from "./app/viewUtils";
@@ -716,33 +716,96 @@ export function App() {
 }
 
 function LoginGate({ onAuthed }: { onAuthed: (mustReset: boolean) => void }) {
-  const [email, setEmail] = useState("owner@businesspulse.local");
-  const [password, setPassword] = useState("demo1234");
+  const [email, setEmail] = useState("");
+  const [password, setPassword] = useState("");
+  const [showPassword, setShowPassword] = useState(false);
+  const [mode, setMode] = useState<"signin" | "reset">("signin");
+  const [resetEmail, setResetEmail] = useState("");
+  const [resetMessage, setResetMessage] = useState("");
+  const [resetBusy, setResetBusy] = useState(false);
   const [error, setError] = useState("");
   const [busy, setBusy] = useState(false);
   return (
     <main className="login-shell">
-      <section className="workspace">
-        <header className="topbar"><h1>BusinessPulse AI Login</h1></header>
-        <section className="panel" style={{ maxWidth: 460 }}>
-          <div className="stack">
-            <input value={email} onChange={(event) => setEmail(event.target.value)} placeholder="Email" />
-            <input value={password} onChange={(event) => setPassword(event.target.value)} placeholder="Password" type="password" />
-            {error ? <div className="notice error">{error}</div> : null}
-            <button className="primary" onClick={async () => {
-              setBusy(true);
-              setError("");
-              try {
-                const response = await login(email, password);
-                setToken(response.token);
-                onAuthed(Boolean(response.mustChangePassword));
-              } catch (err) {
-                setError(err instanceof Error ? err.message : "Login failed");
-              } finally {
-                setBusy(false);
-              }
-            }}>{busy ? "Signing in..." : "Sign in"}</button>
+      <section className="login-layout">
+        <section className="login-aside">
+          <div className="landing-brand">
+            <div className="mark">BP</div>
+            <strong>BusinessPulse AI</strong>
           </div>
+          <h1>Operations Intelligence Workspace</h1>
+          <p>Track revenue, leads, conversion, and marketing performance in one secure workspace.</p>
+          <ul className="bullets">
+            <li>Role-based access controls</li>
+            <li>Grounded AI with source-backed answers</li>
+            <li>Live KPI monitoring and weekly reports</li>
+          </ul>
+        </section>
+        <section className="panel login-card">
+          <div className="login-tabs">
+            <button className={mode === "signin" ? "range-active" : ""} onClick={() => { setMode("signin"); setError(""); setResetMessage(""); }}>Sign In</button>
+            <button className={mode === "reset" ? "range-active" : ""} onClick={() => { setMode("reset"); setError(""); }}>Reset Password</button>
+          </div>
+          {mode === "signin" ? (
+            <div className="stack">
+              <label className="login-field">
+                <span>Email</span>
+                <div className="input-icon">
+                  <Mail size={16} />
+                  <input value={email} onChange={(event) => setEmail(event.target.value)} placeholder="you@company.com" />
+                </div>
+              </label>
+              <label className="login-field">
+                <span>Password</span>
+                <div className="input-icon">
+                  <Lock size={16} />
+                  <input value={password} onChange={(event) => setPassword(event.target.value)} placeholder="Your password" type={showPassword ? "text" : "password"} />
+                  <button className="icon-btn" aria-label={showPassword ? "Hide password" : "Show password"} onClick={() => setShowPassword((value) => !value)}>
+                    {showPassword ? <EyeOff size={16} /> : <Eye size={16} />}
+                  </button>
+                </div>
+              </label>
+              {error ? <div className="notice error">{error}</div> : null}
+              <button className="primary" onClick={async () => {
+                setBusy(true);
+                setError("");
+                try {
+                  const response = await login(email, password);
+                  setToken(response.token);
+                  onAuthed(Boolean(response.mustChangePassword));
+                } catch (err) {
+                  setError(err instanceof Error ? err.message : "Login failed");
+                } finally {
+                  setBusy(false);
+                }
+              }}>{busy ? "Signing in..." : "Sign in"}</button>
+            </div>
+          ) : (
+            <div className="stack">
+              <label className="login-field">
+                <span>Work Email</span>
+                <div className="input-icon">
+                  <Mail size={16} />
+                  <input value={resetEmail} onChange={(event) => setResetEmail(event.target.value)} placeholder="you@company.com" />
+                </div>
+              </label>
+              {error ? <div className="notice error">{error}</div> : null}
+              {resetMessage ? <div className="notice">{resetMessage}</div> : null}
+              <button className="primary" onClick={async () => {
+                setResetBusy(true);
+                setError("");
+                setResetMessage("");
+                try {
+                  await requestPasswordReset(resetEmail);
+                  setResetMessage("Request received. Your admin team will process the reset.");
+                } catch (err) {
+                  setError(err instanceof Error ? err.message : "Unable to submit reset request");
+                } finally {
+                  setResetBusy(false);
+                }
+              }}>{resetBusy ? "Submitting..." : "Submit Reset Request"}</button>
+            </div>
+          )}
         </section>
       </section>
     </main>

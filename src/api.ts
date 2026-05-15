@@ -234,6 +234,13 @@ export function requestDemo(name: string, email: string, company?: string, messa
   });
 }
 
+export function requestPasswordReset(email: string) {
+  return request<{ ok: true }>("/public/password-reset", {
+    method: "POST",
+    body: JSON.stringify({ email })
+  });
+}
+
 export function createCheckout(plan: "starter" | "growth" | "pro") {
   return request<{ url: string | null; sessionId: string }>("/billing/checkout", {
     method: "POST",

@@ -286,6 +286,24 @@ app.post("/api/public/demo-request", async (req, res, next) => {
   }
 });
 
+app.post("/api/public/password-reset", async (req, res, next) => {
+  try {
+    const body = z.object({ email: z.string().email() }).parse(req.body ?? {});
+    await storage.createDemoRequest({
+      name: "Password Reset Request",
+      email: body.email,
+      message: "password_reset_request"
+    });
+    await storage.trackEvent({
+      eventName: "password_reset_requested",
+      payload: { email: body.email }
+    });
+    res.json({ ok: true });
+  } catch (error) {
+    next(error);
+  }
+});
+
 app.get("/api/public/bootstrap-status", async (_req, res, next) => {
   try {
     if (process.env.NODE_ENV === "production") {
