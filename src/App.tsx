@@ -1850,6 +1850,17 @@ function Settings({ onSync, syncMessage, users, onUsersChanged }: { onSync: () =
     }
   }
 
+  const opsHealth = useMemo(() => {
+    if (!opsMetrics || opsMetrics.requests.total === 0) {
+      return { level: "ok" as const, summary: "No traffic yet." };
+    }
+    const errorRatio = opsMetrics.requests.errors5xx / Math.max(1, opsMetrics.requests.total);
+    if (errorRatio >= 0.03) return { level: "critical" as const, summary: `Critical: 5xx ratio ${(errorRatio * 100).toFixed(1)}%` };
+    if (errorRatio >= 0.01) return { level: "warn" as const, summary: `Warning: 5xx ratio ${(errorRatio * 100).toFixed(1)}%` };
+    if (opsMetrics.activeGuards.inFlightWebhookEvents > 20) return { level: "warn" as const, summary: "Warning: webhook in-flight backlog > 20" };
+    return { level: "ok" as const, summary: "Healthy: error ratio and backlog within baseline thresholds." };
+  }, [opsMetrics]);
+
   function clearUserFilters() {
     setUserQuery("");
     setStatusFilter("all");
@@ -1984,6 +1995,9 @@ function Settings({ onSync, syncMessage, users, onUsersChanged }: { onSync: () =
       </Panel>
       <Panel title="Operations">
         <div className="stack">
+          <div className={`notice ${opsHealth.level === "critical" ? "error" : ""}`}>
+            {opsHealth.summary}
+          </div>
           <div className="upload-row">
             <button onClick={() => void refreshOpsMetrics()} disabled={opsBusy}>
               {opsBusy ? "Refreshing..." : "Refresh Ops Metrics"}
@@ -1996,6 +2010,7 @@ function Settings({ onSync, syncMessage, users, onUsersChanged }: { onSync: () =
               <div className="upload-row">
                 <span>Total requests: {opsMetrics.requests.total}</span>
                 <span>5xx errors: {opsMetrics.requests.errors5xx}</span>
+                <span>5xx ratio: {((opsMetrics.requests.errors5xx / Math.max(1, opsMetrics.requests.total)) * 100).toFixed(2)}%</span>
                 <span>2xx: {opsMetrics.requests.byStatusClass["2xx"]}</span>
                 <span>4xx: {opsMetrics.requests.byStatusClass["4xx"]}</span>
                 <span>5xx: {opsMetrics.requests.byStatusClass["5xx"]}</span>
