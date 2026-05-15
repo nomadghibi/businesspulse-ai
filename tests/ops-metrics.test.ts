@@ -57,6 +57,13 @@ try {
   assert.ok(typeof ops.activeGuards.inFlightWebhookEvents === "number");
   assert.ok(Array.isArray(ops.hottestPaths));
 
+  const invitedViewer = await inviteViewer(login.token);
+  const viewerLogin = await loginUser(invitedViewer.email, invitedViewer.password);
+  const viewerOpsRes = await fetch(`${base}/api/ops/metrics`, {
+    headers: { Authorization: `Bearer ${viewerLogin.token}` }
+  });
+  assert.equal(viewerOpsRes.status, 403);
+
   console.log("ops-metrics.test.ts passed");
 } finally {
   server.kill("SIGTERM");
@@ -102,4 +109,29 @@ async function createTrialAndLogin() {
   assert.equal(changePassword.status, 200);
 
   return login;
+}
+
+async function inviteViewer(ownerToken: string) {
+  const email = `viewer.ops.${Date.now()}@example.com`;
+  const password = "viewerpass123";
+  const inviteRes = await fetch(`${base}/api/users/invite`, {
+    method: "POST",
+    headers: {
+      "Content-Type": "application/json",
+      Authorization: `Bearer ${ownerToken}`
+    },
+    body: JSON.stringify({ email, role: "viewer", password })
+  });
+  assert.equal(inviteRes.status, 200);
+  return { email, password };
+}
+
+async function loginUser(email: string, password: string) {
+  const res = await fetch(`${base}/api/auth/login`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ email, password })
+  });
+  assert.equal(res.status, 200);
+  return res.json() as Promise<{ token: string }>;
 }
