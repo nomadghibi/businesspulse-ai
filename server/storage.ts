@@ -55,6 +55,8 @@ export interface Storage {
     organizationId: string,
     progress: { firstUploadAt?: string; coreDatasetsCompletedAt?: string }
   ): Promise<void>;
+  hasAnyUser(): Promise<boolean>;
+  bootstrapOwner(input: { email: string; password: string; organizationName?: string; timezone?: string }): Promise<{ organizationId: string; email: string }>;
 }
 
 class MemoryStorage implements Storage {
@@ -204,6 +206,38 @@ class MemoryStorage implements Storage {
       coreDatasetsCompletedAt: progress.coreDatasetsCompletedAt ?? existing.coreDatasetsCompletedAt
     });
   }
+  async hasAnyUser() {
+    return this.users.size > 0;
+  }
+  async bootstrapOwner(input: { email: string; password: string; organizationName?: string; timezone?: string }) {
+    if (this.users.size > 0) throw Object.assign(new Error("Bootstrap already completed"), { status: 409 });
+    const organizationId = DEMO_ORG_ID;
+    const orgName = input.organizationName?.trim() || "BusinessPulse Workspace";
+    const existingOrg = organizations.find((item) => item.id === organizationId);
+    if (!existingOrg) {
+      organizations.push({
+        id: organizationId,
+        name: orgName,
+        businessType: "Home services",
+        timezone: input.timezone?.trim() || "America/New_York"
+      });
+    } else {
+      existingOrg.name = orgName;
+      existingOrg.timezone = input.timezone?.trim() || existingOrg.timezone;
+    }
+    const userId = `user_${crypto.randomUUID()}`;
+    this.users.set(userId, {
+      userId,
+      organizationId,
+      email: input.email.toLowerCase(),
+      role: "owner",
+      disabled: false,
+      passwordHash: hashPassword(input.password),
+      mustChangePassword: false
+    });
+    this.plans.set(organizationId, { plan: "starter", status: "trialing" });
+    return { organizationId, email: input.email.toLowerCase() };
+  }
 }
 
 class PostgresStorage implements Storage {
@@ -213,6 +247,7 @@ class PostgresStorage implements Storage {
   }
 
   async initialize() {
+    await this.ensureMigrationTable();
     await this.applyMigration("001_normalized_schema", resolve(process.cwd(), "server/migrations/001_normalized_schema.sql"));
     await this.applyMigration("002_users_relational_and_indexes", resolve(process.cwd(), "server/migrations/002_users_relational_and_indexes.sql"));
     await this.applyMigration("003_conversion_analytics_billing", resolve(process.cwd(), "server/migrations/003_conversion_analytics_billing.sql"));
@@ -574,6 +609,55 @@ class PostgresStorage implements Storage {
       [organizationId, progress.firstUploadAt ?? null, progress.coreDatasetsCompletedAt ?? null]
     );
   }
+  async hasAnyUser() {
+    const { rows } = await this.pool.query<{ count: string }>("select count(*)::text as count from users");
+    return Number(rows[0]?.count ?? 0) > 0;
+  }
+  async bootstrapOwner(input: { email: string; password: string; organizationName?: string; timezone?: string }) {
+    const email = input.email.toLowerCase();
+    const organizationName = input.organizationName?.trim() || "BusinessPulse Workspace";
+    const timezone = input.timezone?.trim() || "America/New_York";
+    await this.pool.query("begin");
+    try {
+      const usersCount = await this.pool.query<{ count: string }>("select count(*)::text as count from users");
+      if (Number(usersCount.rows[0]?.count ?? 0) > 0) {
+        throw Object.assign(new Error("Bootstrap already completed"), { status: 409 });
+      }
+      await this.pool.query(
+        `insert into organizations (id, name, business_type, timezone, created_at, updated_at)
+         values ($1, $2, $3, $4, now(), now())
+         on conflict (id) do update set name = excluded.name, timezone = excluded.timezone, updated_at = now()`,
+        [DEMO_ORG_ID, organizationName, "Home services", timezone]
+      );
+      const userId = `user_${crypto.randomUUID()}`;
+      await this.pool.query(
+        `insert into users (id, email, password_hash, disabled, must_change_password)
+         values ($1, $2, $3, false, false)`,
+        [userId, email, hashPassword(input.password)]
+      );
+      await this.pool.query(
+        `insert into organization_members (id, organization_id, user_id, role)
+         values ($1, $2, $3, 'owner')`,
+        [`member_${crypto.randomUUID()}`, DEMO_ORG_ID, userId]
+      );
+      const existingSub = await this.pool.query<{ id: string }>(
+        "select id from billing_subscriptions where organization_id = $1 order by created_at asc limit 1",
+        [DEMO_ORG_ID]
+      );
+      if (!existingSub.rowCount) {
+        await this.pool.query(
+          `insert into billing_subscriptions (id, organization_id, plan, status, created_at, updated_at)
+           values ($1, $2, 'starter', 'trialing', now(), now())`,
+          [`sub_${crypto.randomUUID()}`, DEMO_ORG_ID]
+        );
+      }
+      await this.pool.query("commit");
+      return { organizationId: DEMO_ORG_ID, email };
+    } catch (error) {
+      await this.pool.query("rollback");
+      throw error;
+    }
+  }
 
   private async selectPayloads(table: string, organizationId: string) {
     const { rows } = await this.pool.query<{ payload: unknown }>(
@@ -751,12 +835,21 @@ class PostgresStorage implements Storage {
     await this.pool.query("begin");
     try {
       await this.pool.query(sql);
-      await this.pool.query("insert into schema_migrations (id) values ($1)", [id]);
+      await this.pool.query("insert into schema_migrations (id) values ($1) on conflict (id) do nothing", [id]);
       await this.pool.query("commit");
     } catch (error) {
       await this.pool.query("rollback");
       throw error;
     }
+  }
+
+  private async ensureMigrationTable() {
+    await this.pool.query(`
+      create table if not exists schema_migrations (
+        id text primary key,
+        created_at timestamptz not null default now()
+      )
+    `);
   }
 }
 

@@ -286,6 +286,45 @@ app.post("/api/public/demo-request", async (req, res, next) => {
   }
 });
 
+app.get("/api/public/bootstrap-status", async (_req, res, next) => {
+  try {
+    if (process.env.NODE_ENV === "production") {
+      return res.status(404).json({ error: "Not found" });
+    }
+    const hasUsers = await storage.hasAnyUser();
+    res.json({ needsBootstrap: !hasUsers });
+  } catch (error) {
+    next(error);
+  }
+});
+
+app.post("/api/public/bootstrap-owner", async (req, res, next) => {
+  try {
+    if (process.env.NODE_ENV === "production") {
+      return res.status(404).json({ error: "Not found" });
+    }
+    const secret = (process.env.BOOTSTRAP_SECRET ?? "").trim();
+    if (!secret) return res.status(503).json({ error: "Bootstrap is not configured." });
+    const provided = String(req.header("x-bootstrap-secret") ?? "").trim();
+    if (!provided || provided !== secret) return res.status(401).json({ error: "Invalid bootstrap secret" });
+    const body = z.object({
+      email: z.string().email(),
+      password: z.string().min(10),
+      organizationName: z.string().min(2).max(120).optional(),
+      timezone: z.string().min(2).max(80).optional()
+    }).parse(req.body ?? {});
+    const created = await storage.bootstrapOwner(body);
+    await storage.trackEvent({
+      organizationId: created.organizationId,
+      eventName: "bootstrap_owner_created",
+      payload: { email: created.email }
+    });
+    res.json({ ok: true, ...created });
+  } catch (error) {
+    next(error);
+  }
+});
+
 app.post("/api/public/track", async (req, res, next) => {
   try {
     const body = z.object({
