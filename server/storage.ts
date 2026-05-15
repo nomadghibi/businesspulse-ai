@@ -57,6 +57,8 @@ export interface Storage {
   ): Promise<void>;
   hasAnyUser(): Promise<boolean>;
   bootstrapOwner(input: { email: string; password: string; organizationName?: string; timezone?: string }): Promise<{ organizationId: string; email: string }>;
+  createPasswordResetToken(email: string): Promise<{ emailSent: boolean; token?: string }>;
+  resetPasswordWithToken(token: string, nextPassword: string): Promise<void>;
 }
 
 class MemoryStorage implements Storage {
@@ -70,6 +72,7 @@ class MemoryStorage implements Storage {
   private plans = new Map<string, { plan: string; status: string }>([[DEMO_ORG_ID, { plan: "starter", status: "trialing" }]]);
   private processedWebhookEvents = new Set<string>();
   private onboarding = new Map<string, { firstUploadAt: string | null; coreDatasetsCompletedAt: string | null }>();
+  private passwordResetTokens = new Map<string, { userId: string; expiresAt: number; used: boolean }>();
   async initialize() {}
   async getOrganizations() {
     return organizations;
@@ -238,6 +241,23 @@ class MemoryStorage implements Storage {
     this.plans.set(organizationId, { plan: "starter", status: "trialing" });
     return { organizationId, email: input.email.toLowerCase() };
   }
+  async createPasswordResetToken(email: string) {
+    const user = [...this.users.values()].find((item) => item.email.toLowerCase() === email.toLowerCase() && !item.disabled);
+    if (!user) return { emailSent: true };
+    const token = randomBytes(24).toString("hex");
+    this.passwordResetTokens.set(token, { userId: user.userId, expiresAt: Date.now() + (30 * 60 * 1000), used: false });
+    return { emailSent: false, token };
+  }
+  async resetPasswordWithToken(token: string, nextPassword: string) {
+    const item = this.passwordResetTokens.get(token);
+    if (!item || item.used || item.expiresAt < Date.now()) throw Object.assign(new Error("Invalid or expired reset token"), { status: 400 });
+    const user = this.users.get(item.userId);
+    if (!user) throw Object.assign(new Error("Invalid or expired reset token"), { status: 400 });
+    user.passwordHash = hashPassword(nextPassword);
+    user.mustChangePassword = false;
+    this.users.set(user.userId, user);
+    this.passwordResetTokens.set(token, { ...item, used: true });
+  }
 }
 
 class PostgresStorage implements Storage {
@@ -254,6 +274,7 @@ class PostgresStorage implements Storage {
     await this.applyMigration("004_webhook_idempotency", resolve(process.cwd(), "server/migrations/004_webhook_idempotency.sql"));
     await this.applyMigration("005_user_password_reset_flag", resolve(process.cwd(), "server/migrations/005_user_password_reset_flag.sql"));
     await this.applyMigration("006_onboarding_progress", resolve(process.cwd(), "server/migrations/006_onboarding_progress.sql"));
+    await this.applyMigration("007_password_reset_tokens", resolve(process.cwd(), "server/migrations/007_password_reset_tokens.sql"));
 
     const org = organizations[0];
     const existing = await this.pool.query("select id from organizations where id = $1", [DEMO_ORG_ID]);
@@ -658,6 +679,45 @@ class PostgresStorage implements Storage {
       throw error;
     }
   }
+  async createPasswordResetToken(email: string) {
+    const userLookup = await this.pool.query<{ id: string; disabled: boolean }>(
+      "select id, disabled from users where email = $1 order by created_at desc limit 1",
+      [email.toLowerCase()]
+    );
+    const user = userLookup.rows[0];
+    if (!user || user.disabled) return { emailSent: true };
+    const token = randomBytes(24).toString("hex");
+    const tokenHash = hashResetToken(token);
+    await this.pool.query(
+      `insert into password_reset_tokens (id, user_id, token_hash, expires_at)
+       values ($1, $2, $3, now() + interval '30 minutes')`,
+      [`prt_${crypto.randomUUID()}`, user.id, tokenHash]
+    );
+    return { emailSent: false, token };
+  }
+  async resetPasswordWithToken(token: string, nextPassword: string) {
+    const tokenHash = hashResetToken(token);
+    await this.pool.query("begin");
+    try {
+      const found = await this.pool.query<{ id: string; user_id: string }>(
+        `select id, user_id
+         from password_reset_tokens
+         where token_hash = $1 and used_at is null and expires_at > now()
+         order by created_at desc
+         limit 1
+         for update`,
+        [tokenHash]
+      );
+      const row = found.rows[0];
+      if (!row) throw Object.assign(new Error("Invalid or expired reset token"), { status: 400 });
+      await this.pool.query("update users set password_hash = $2, must_change_password = false where id = $1", [row.user_id, hashPassword(nextPassword)]);
+      await this.pool.query("update password_reset_tokens set used_at = now() where id = $1", [row.id]);
+      await this.pool.query("commit");
+    } catch (error) {
+      await this.pool.query("rollback");
+      throw error;
+    }
+  }
 
   private async selectPayloads(table: string, organizationId: string) {
     const { rows } = await this.pool.query<{ payload: unknown }>(
@@ -867,6 +927,10 @@ export function createInMemoryStorageForTests(): Storage {
 }
 
 function hashToken(token: string) {
+  return createHash("sha256").update(token).digest("hex");
+}
+
+function hashResetToken(token: string) {
   return createHash("sha256").update(token).digest("hex");
 }
 

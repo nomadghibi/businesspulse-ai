@@ -241,6 +241,13 @@ export function requestPasswordReset(email: string) {
   });
 }
 
+export function completePasswordReset(token: string, nextPassword: string) {
+  return request<{ ok: true }>("/public/password-reset/complete", {
+    method: "POST",
+    body: JSON.stringify({ token, nextPassword })
+  });
+}
+
 export function createCheckout(plan: "starter" | "growth" | "pro") {
   return request<{ url: string | null; sessionId: string }>("/billing/checkout", {
     method: "POST",

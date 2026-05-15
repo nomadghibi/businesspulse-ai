@@ -289,15 +289,37 @@ app.post("/api/public/demo-request", async (req, res, next) => {
 app.post("/api/public/password-reset", async (req, res, next) => {
   try {
     const body = z.object({ email: z.string().email() }).parse(req.body ?? {});
-    await storage.createDemoRequest({
-      name: "Password Reset Request",
-      email: body.email,
-      message: "password_reset_request"
-    });
+    const result = await storage.createPasswordResetToken(body.email);
+    const resetBaseUrl = (process.env.APP_BASE_URL ?? "").trim();
+    const hasResend = Boolean((process.env.RESEND_API_KEY ?? "").trim() && (process.env.RESET_FROM_EMAIL ?? "").trim());
+    if (result.token && resetBaseUrl && hasResend) {
+      const resetLink = `${resetBaseUrl}/?auth=reset&token=${encodeURIComponent(result.token)}`;
+      await sendResetEmail(body.email, resetLink);
+    } else if (result.token) {
+      await storage.createDemoRequest({
+        name: "Password Reset Link",
+        email: body.email,
+        message: `password_reset_link:${result.token}`
+      });
+    }
     await storage.trackEvent({
       eventName: "password_reset_requested",
       payload: { email: body.email }
     });
+    res.json({ ok: true });
+  } catch (error) {
+    next(error);
+  }
+});
+
+app.post("/api/public/password-reset/complete", async (req, res, next) => {
+  try {
+    const body = z.object({
+      token: z.string().min(12),
+      nextPassword: z.string().min(10)
+    }).parse(req.body ?? {});
+    await storage.resetPasswordWithToken(body.token, body.nextPassword);
+    await storage.trackEvent({ eventName: "password_reset_completed", payload: {} });
     res.json({ ok: true });
   } catch (error) {
     next(error);
@@ -880,6 +902,25 @@ function sanitizeErrorMessage(message: string) {
     .replace(/"password"\s*:\s*"[^"]*"/gi, "\"password\":\"[redacted]\"")
     .replace(/"currentPassword"\s*:\s*"[^"]*"/gi, "\"currentPassword\":\"[redacted]\"")
     .replace(/"nextPassword"\s*:\s*"[^"]*"/gi, "\"nextPassword\":\"[redacted]\"");
+}
+
+async function sendResetEmail(email: string, resetLink: string) {
+  const apiKey = (process.env.RESEND_API_KEY ?? "").trim();
+  const from = (process.env.RESET_FROM_EMAIL ?? "").trim();
+  if (!apiKey || !from) return;
+  await fetch("https://api.resend.com/emails", {
+    method: "POST",
+    headers: {
+      Authorization: `Bearer ${apiKey}`,
+      "Content-Type": "application/json"
+    },
+    body: JSON.stringify({
+      from,
+      to: [email],
+      subject: "Reset your BusinessPulse password",
+      html: `<p>Reset your password using this secure link:</p><p><a href="${resetLink}">${resetLink}</a></p><p>This link expires in 30 minutes.</p>`
+    })
+  }).catch(() => {});
 }
 
 async function maybeSendOpsAlert() {

@@ -2,7 +2,7 @@ import { AlertTriangle, ArrowRight, BarChart3, Bot, CheckCircle2, Database, Eye,
 import { useEffect, useMemo, useRef, useState } from "react";
 import { Area, AreaChart, Bar, BarChart, CartesianGrid, ResponsiveContainer, Tooltip, XAxis, YAxis } from "recharts";
 import type { AiAnswer, ColumnMapping, CsvPreview, DatasetType, FileUpload, MetricsResponse, Organization, Recommendation, Report } from "../shared/types";
-import { askAi, changePassword, clearToken, commitUploadCsv, createCheckout, createRecommendationFromAnswer, type AppUser, generateReport, getAlerts, getMetrics, getOnboardingStatus, getOpsMetrics, getOrganization, getRecommendations, getReports, getUploads, getUsers, inviteUser, login, logout, type OnboardingStatus, type OpsMetricsResponse, previewUploadCsv, requestDemo, requestPasswordReset, setToken, startTrial, syncStripe, trackEvent, trackPublicEvent, updateRecommendationStatus, updateUserRole, updateUserStatus } from "./api";
+import { askAi, changePassword, clearToken, commitUploadCsv, completePasswordReset, createCheckout, createRecommendationFromAnswer, type AppUser, generateReport, getAlerts, getMetrics, getOnboardingStatus, getOpsMetrics, getOrganization, getRecommendations, getReports, getUploads, getUsers, inviteUser, login, logout, type OnboardingStatus, type OpsMetricsResponse, previewUploadCsv, requestDemo, requestPasswordReset, setToken, startTrial, syncStripe, trackEvent, trackPublicEvent, updateRecommendationStatus, updateUserRole, updateUserStatus } from "./api";
 import { allowedTabs, datasetTargetFields, datasetTypes, normalizeTab, type AppTab } from "./app/constants";
 import { alignRangeToToday, canShiftForward, clampDateToToday, dateDaysAgo, dateRangeDaysAgo, dateWindowDays, initialDateRange, isValidDateRange, readUrlViewState, shiftDateRangeWithoutFuture } from "./app/dateState";
 import { Empty, escapeCsv, formatLastUpdated, formatTimeToFirstInsight, Panel, StatusItem, summaryLine } from "./app/viewUtils";
@@ -723,6 +723,10 @@ function LoginGate({ onAuthed }: { onAuthed: (mustReset: boolean) => void }) {
   const [resetEmail, setResetEmail] = useState("");
   const [resetMessage, setResetMessage] = useState("");
   const [resetBusy, setResetBusy] = useState(false);
+  const [resetToken, setResetToken] = useState(() => new URLSearchParams(window.location.search).get("token") ?? "");
+  const [newPassword, setNewPassword] = useState("");
+  const [confirmPassword, setConfirmPassword] = useState("");
+  const [resetCompleteBusy, setResetCompleteBusy] = useState(false);
   const [error, setError] = useState("");
   const [busy, setBusy] = useState(false);
   return (
@@ -804,6 +808,49 @@ function LoginGate({ onAuthed }: { onAuthed: (mustReset: boolean) => void }) {
                   setResetBusy(false);
                 }
               }}>{resetBusy ? "Submitting..." : "Submit Reset Request"}</button>
+              <hr />
+              <label className="login-field">
+                <span>Reset Token</span>
+                <div className="input-icon">
+                  <Lock size={16} />
+                  <input value={resetToken} onChange={(event) => setResetToken(event.target.value)} placeholder="Paste reset token" />
+                </div>
+              </label>
+              <label className="login-field">
+                <span>New Password</span>
+                <div className="input-icon">
+                  <Lock size={16} />
+                  <input value={newPassword} onChange={(event) => setNewPassword(event.target.value)} placeholder="Minimum 10 characters" type="password" />
+                </div>
+              </label>
+              <label className="login-field">
+                <span>Confirm New Password</span>
+                <div className="input-icon">
+                  <Lock size={16} />
+                  <input value={confirmPassword} onChange={(event) => setConfirmPassword(event.target.value)} placeholder="Re-enter password" type="password" />
+                </div>
+              </label>
+              <button className="primary" onClick={async () => {
+                setError("");
+                setResetMessage("");
+                if (newPassword !== confirmPassword) {
+                  setError("Passwords do not match.");
+                  return;
+                }
+                setResetCompleteBusy(true);
+                try {
+                  await completePasswordReset(resetToken.trim(), newPassword);
+                  setResetMessage("Password reset complete. You can sign in now.");
+                  setMode("signin");
+                  setPassword("");
+                  setNewPassword("");
+                  setConfirmPassword("");
+                } catch (err) {
+                  setError(err instanceof Error ? err.message : "Unable to reset password");
+                } finally {
+                  setResetCompleteBusy(false);
+                }
+              }}>{resetCompleteBusy ? "Resetting..." : "Reset Password"}</button>
             </div>
           )}
         </section>
