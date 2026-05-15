@@ -71,6 +71,17 @@ These are startup thresholds for MVP stage and should be tuned after one week of
    - remediation
    - follow-up tasks
 
+## Backup And Restore Drill
+
+For PostgreSQL deployments:
+
+1. Export backup:
+   - `./scripts/backup-db.sh`
+2. Validate backup file exists under `./backups`.
+3. Restore on a non-production database first:
+   - `./scripts/restore-db.sh ./backups/<backup-file>.sql.gz`
+4. Verify app startup and smoke flows against restored data.
+
 ## Data Handling Safety
 
 - Error responses include `requestId`, not raw stack traces.

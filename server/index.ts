@@ -20,6 +20,7 @@ const loginAttempts = new Map<string, { count: number; blockedUntil: number }>()
 const publicRateLimits = new Map<string, { count: number; resetAt: number }>();
 const processingWebhookEvents = new Set<string>();
 const billableWriteEndpoints = new Set(["/upload", "/reports", "/integrations/stripe/sync"]);
+const alertState = new Map<string, number>();
 const opsCounters = {
   startedAt: Date.now(),
   totalRequests: 0,
@@ -27,6 +28,7 @@ const opsCounters = {
   byStatusClass: { "2xx": 0, "3xx": 0, "4xx": 0, "5xx": 0 } as Record<"2xx" | "3xx" | "4xx" | "5xx", number>,
   byPath: new Map<string, number>()
 };
+const MAX_USERS_BY_PLAN: Record<string, number> = { starter: 3, growth: 15, pro: 1000 };
 
 validateRuntimeEnv();
 
@@ -43,6 +45,7 @@ app.use((req, res, next) => {
     if (statusClass in opsCounters.byStatusClass) opsCounters.byStatusClass[statusClass] += 1;
     if (res.statusCode >= 500) opsCounters.totalErrors += 1;
     opsCounters.byPath.set(req.path, (opsCounters.byPath.get(req.path) ?? 0) + 1);
+    void maybeSendOpsAlert();
     console.info(JSON.stringify({
       ts: new Date().toISOString(),
       level: "info",
@@ -443,7 +446,14 @@ app.post("/api/users/invite", async (req, res, next) => {
       role: z.enum(["owner", "admin", "viewer"]),
       password: z.string().min(8).optional()
     }).parse(req.body);
-    const user = await storage.inviteUser(org(req), body.email, body.role, body.password ?? "changeme123");
+    const organizationId = org(req);
+    const plan = await storage.getOrganizationPlan(organizationId);
+    const users = await storage.listUsers(organizationId);
+    const maxUsers = MAX_USERS_BY_PLAN[plan.plan] ?? MAX_USERS_BY_PLAN.starter;
+    if (users.length >= maxUsers) {
+      return res.status(402).json({ error: `Plan user limit reached (${maxUsers}). Upgrade plan to add more users.` });
+    }
+    const user = await storage.inviteUser(organizationId, body.email, body.role, body.password ?? "changeme123");
     res.json(user);
   } catch (error) {
     next(error);
@@ -789,6 +799,48 @@ function sanitizeErrorMessage(message: string) {
     .replace(/"password"\s*:\s*"[^"]*"/gi, "\"password\":\"[redacted]\"")
     .replace(/"currentPassword"\s*:\s*"[^"]*"/gi, "\"currentPassword\":\"[redacted]\"")
     .replace(/"nextPassword"\s*:\s*"[^"]*"/gi, "\"nextPassword\":\"[redacted]\"");
+}
+
+async function maybeSendOpsAlert() {
+  const webhook = process.env.OPS_ALERT_WEBHOOK_URL;
+  if (!webhook) return;
+  const total = opsCounters.totalRequests;
+  if (total < 50) return;
+  const ratio = opsCounters.totalErrors / Math.max(1, total);
+  const backlog = processingWebhookEvents.size;
+  let key = "";
+  let text = "";
+  if (ratio >= 0.03) {
+    key = "critical_5xx_ratio";
+    text = `Critical 5xx ratio ${(ratio * 100).toFixed(2)}% (errors=${opsCounters.totalErrors}, total=${total})`;
+  } else if (ratio >= 0.01) {
+    key = "warn_5xx_ratio";
+    text = `Warning 5xx ratio ${(ratio * 100).toFixed(2)}% (errors=${opsCounters.totalErrors}, total=${total})`;
+  } else if (backlog > 20) {
+    key = "warn_webhook_backlog";
+    text = `Warning webhook backlog in-flight=${backlog}`;
+  } else {
+    return;
+  }
+  const now = Date.now();
+  const cooldownMs = 5 * 60 * 1000;
+  const last = alertState.get(key) ?? 0;
+  if (now - last < cooldownMs) return;
+  alertState.set(key, now);
+  try {
+    await fetch(webhook, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        service: "businesspulse-ai-api",
+        event: key,
+        text,
+        ts: new Date().toISOString()
+      })
+    });
+  } catch {
+    // No throw: alert delivery must not impact API request path.
+  }
 }
 
 async function resolveOrganizationIdFromStripeEvent(object: any): Promise<string | null> {

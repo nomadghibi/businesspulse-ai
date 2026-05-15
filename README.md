@@ -115,6 +115,24 @@ Production start command:
 npm run start
 ```
 
+## Database Backup And Restore
+
+When running with PostgreSQL (`DATABASE_URL` set):
+
+```bash
+./scripts/backup-db.sh
+./scripts/restore-db.sh ./backups/<backup-file>.sql.gz
+```
+
+## Ops Alert Webhook (Optional)
+
+- Set `OPS_ALERT_WEBHOOK_URL` to receive server-side threshold alerts.
+- Alerts are emitted with a 5-minute cooldown per alert key.
+- Current alert keys:
+  - `critical_5xx_ratio`
+  - `warn_5xx_ratio`
+  - `warn_webhook_backlog`
+
 ## MVP Scope
 
 - CSV upload with dataset detection, column mapping, validation, and data quality notes
