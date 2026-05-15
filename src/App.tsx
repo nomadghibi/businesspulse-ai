@@ -637,7 +637,7 @@ export function App() {
         {active === "sources" ? <DataSources uploads={uploads} onboarding={onboarding} refresh={refresh} /> : null}
         {active === "reports" ? <Reports reports={reports} start={start} end={end} refresh={refresh} /> : null}
         {active === "recommendations" ? <Recommendations recommendations={recommendations} onUseInAsk={(question) => { setAskSeed(question); setAskAutoRun(true); setActive("ask"); }} onStatusChanged={refresh} /> : null}
-        {active === "settings" ? <Settings users={users} syncMessage={syncMessage} onSync={async () => {
+        {active === "settings" ? <Settings users={users} subscriptionPlan={(org as Organization & { subscriptionPlan?: string } | null)?.subscriptionPlan} syncMessage={syncMessage} onSync={async () => {
           const result = await syncStripe(25);
           setSyncMessage(`Synced ${result.syncedCharges} new charges out of ${result.scannedCharges} scanned.`);
           await refresh();
@@ -1806,7 +1806,7 @@ function Recommendations({
   );
 }
 
-function Settings({ onSync, syncMessage, users, onUsersChanged }: { onSync: () => Promise<void>; syncMessage: string; users: AppUser[]; onUsersChanged: () => Promise<void> }) {
+function Settings({ onSync, syncMessage, users, onUsersChanged, subscriptionPlan }: { onSync: () => Promise<void>; syncMessage: string; users: AppUser[]; onUsersChanged: () => Promise<void>; subscriptionPlan?: string }) {
   const [inviteEmail, setInviteEmail] = useState("");
   const [inviteRole, setInviteRole] = useState<"owner" | "admin" | "viewer">("viewer");
   const [invitePassword, setInvitePassword] = useState("changeme123");
@@ -1824,6 +1824,9 @@ function Settings({ onSync, syncMessage, users, onUsersChanged }: { onSync: () =
     acc[user.role] = (acc[user.role] ?? 0) + 1;
     return acc;
   }, {});
+  const plan = subscriptionPlan ?? "starter";
+  const userLimit = plan === "starter" ? 3 : plan === "growth" ? 15 : 1000;
+  const remainingSeats = Math.max(0, userLimit - users.length);
   const filteredUsers = users.filter((user) => {
     const q = userQuery.trim().toLowerCase();
     const queryMatch = !q || user.email.toLowerCase().includes(q);
@@ -1920,6 +1923,7 @@ function Settings({ onSync, syncMessage, users, onUsersChanged }: { onSync: () =
       <Panel title="Users And Roles">
         <div className="stack">
           <p>Owners: {roleCounts.owner ?? 0} | Admins: {roleCounts.admin ?? 0} | Viewers: {roleCounts.viewer ?? 0}</p>
+          <p>Plan: {plan} | Users: {users.length}/{userLimit} | Remaining seats: {remainingSeats}</p>
           <div className="upload-row">
             <input value={inviteEmail} onChange={(event) => setInviteEmail(event.target.value)} placeholder="new.user@company.com" />
             <select value={inviteRole} onChange={(event) => setInviteRole(event.target.value as "owner" | "admin" | "viewer")}>
