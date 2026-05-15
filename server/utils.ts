@@ -27,9 +27,9 @@ export function toDateOnly(value: unknown): string | undefined {
   return iso?.slice(0, 10);
 }
 
-export function inPeriod(dateLike: string | undefined, period: Period) {
-  if (!dateLike) return false;
-  const date = dateLike.slice(0, 10);
+export function inPeriod(dateLike: unknown, period: Period) {
+  const date = toDateOnly(dateLike);
+  if (!date) return false;
   return date >= period.start && date <= period.end;
 }
 
