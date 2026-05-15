@@ -20,6 +20,13 @@ const loginAttempts = new Map<string, { count: number; blockedUntil: number }>()
 const publicRateLimits = new Map<string, { count: number; resetAt: number }>();
 const processingWebhookEvents = new Set<string>();
 const billableWriteEndpoints = new Set(["/upload", "/reports", "/integrations/stripe/sync"]);
+const opsCounters = {
+  startedAt: Date.now(),
+  totalRequests: 0,
+  totalErrors: 0,
+  byStatusClass: { "2xx": 0, "3xx": 0, "4xx": 0, "5xx": 0 } as Record<"2xx" | "3xx" | "4xx" | "5xx", number>,
+  byPath: new Map<string, number>()
+};
 
 validateRuntimeEnv();
 
@@ -31,6 +38,11 @@ app.use((req, res, next) => {
   const startedAt = Date.now();
   res.on("finish", () => {
     if (req.path === "/api/health") return;
+    opsCounters.totalRequests += 1;
+    const statusClass = `${Math.floor(res.statusCode / 100)}xx` as "2xx" | "3xx" | "4xx" | "5xx";
+    if (statusClass in opsCounters.byStatusClass) opsCounters.byStatusClass[statusClass] += 1;
+    if (res.statusCode >= 500) opsCounters.totalErrors += 1;
+    opsCounters.byPath.set(req.path, (opsCounters.byPath.get(req.path) ?? 0) + 1);
     console.info(JSON.stringify({
       ts: new Date().toISOString(),
       level: "info",
@@ -322,6 +334,32 @@ app.get("/api/organization", async (req, res, next) => {
     if (!organization) return res.status(404).json({ error: "Organization not found" });
     const plan = await storage.getOrganizationPlan(organizationId);
     res.json({ ...organization, subscriptionPlan: plan.plan, subscriptionStatus: plan.status });
+  } catch (error) {
+    next(error);
+  }
+});
+
+app.get("/api/ops/metrics", async (req, res, next) => {
+  try {
+    requireRole(req, res, ["owner", "admin"]);
+    res.json({
+      startedAt: new Date(opsCounters.startedAt).toISOString(),
+      uptimeSeconds: Math.max(0, Math.floor((Date.now() - opsCounters.startedAt) / 1000)),
+      requests: {
+        total: opsCounters.totalRequests,
+        errors5xx: opsCounters.totalErrors,
+        byStatusClass: opsCounters.byStatusClass
+      },
+      activeGuards: {
+        loginAttemptBuckets: loginAttempts.size,
+        publicRateLimitBuckets: publicRateLimits.size,
+        inFlightWebhookEvents: processingWebhookEvents.size
+      },
+      hottestPaths: Array.from(opsCounters.byPath.entries())
+        .sort((a, b) => b[1] - a[1])
+        .slice(0, 15)
+        .map(([path, count]) => ({ path, count }))
+    });
   } catch (error) {
     next(error);
   }
@@ -688,6 +726,7 @@ app.post("/api/integrations/stripe/sync", async (req, res, next) => {
 
 app.use((error: unknown, req: express.Request, res: express.Response, _next: express.NextFunction) => {
   const err = error as { message?: string; status?: number };
+  const safeMessage = sanitizeErrorMessage(err.message ?? "Unexpected server error");
   const requestId = String(Reflect.get(req, "requestId") ?? "");
   console.error(JSON.stringify({
     ts: new Date().toISOString(),
@@ -697,9 +736,9 @@ app.use((error: unknown, req: express.Request, res: express.Response, _next: exp
     method: req.method,
     path: req.path,
     statusCode: err.status ?? 500,
-    message: err.message ?? "Unexpected server error"
+    message: safeMessage
   }));
-  res.status(err.status ?? 500).json({ error: err.message ?? "Unexpected server error", requestId });
+  res.status(err.status ?? 500).json({ error: safeMessage, requestId });
 });
 
 void (async () => {
@@ -742,6 +781,14 @@ function buildCorsOptions(): cors.CorsOptions {
       callback(new Error("CORS origin not allowed"));
     }
   };
+}
+
+function sanitizeErrorMessage(message: string) {
+  return message
+    .replace(/[A-Z0-9._%+-]+@[A-Z0-9.-]+\.[A-Z]{2,}/gi, "[redacted-email]")
+    .replace(/"password"\s*:\s*"[^"]*"/gi, "\"password\":\"[redacted]\"")
+    .replace(/"currentPassword"\s*:\s*"[^"]*"/gi, "\"currentPassword\":\"[redacted]\"")
+    .replace(/"nextPassword"\s*:\s*"[^"]*"/gi, "\"nextPassword\":\"[redacted]\"");
 }
 
 async function resolveOrganizationIdFromStripeEvent(object: any): Promise<string | null> {
