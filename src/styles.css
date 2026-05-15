@@ -13,7 +13,7 @@ button { cursor: pointer; }
 
 .app-shell {
   display: grid;
-  grid-template-columns: 260px 1fr;
+  grid-template-columns: 260px minmax(0, 1fr);
   min-height: 100vh;
 }
 
@@ -212,6 +212,7 @@ nav button.active, nav button:hover { background: #24483d; color: #ffffff; }
   padding: 28px;
   max-width: 1420px;
   width: 100%;
+  min-width: 0;
 }
 
 .topbar {
@@ -221,13 +222,22 @@ nav button.active, nav button:hover { background: #24483d; color: #ffffff; }
   align-items: flex-start;
   margin-bottom: 24px;
 }
+.topbar > :first-child {
+  min-width: 0;
+}
 
 h1, h2, p { margin-top: 0; }
 h1 { font-size: 28px; margin-bottom: 6px; }
 h2 { font-size: 18px; margin-bottom: 14px; }
 p { color: #5a665f; line-height: 1.55; }
 
-.date-controls { display: flex; gap: 10px; }
+.date-controls {
+  display: flex;
+  gap: 10px;
+  flex-wrap: wrap;
+  justify-content: flex-end;
+  min-width: 0;
+}
 .date-controls .range-active {
   background: #1b4f43;
   color: #ffffff;
