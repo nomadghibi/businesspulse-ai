@@ -23,6 +23,28 @@ const billableWriteEndpoints = new Set(["/upload", "/reports", "/integrations/st
 
 validateRuntimeEnv();
 
+app.use((req, res, next) => {
+  const incoming = req.header("x-request-id");
+  const requestId = incoming && incoming.trim().length > 0 ? incoming.trim() : crypto.randomUUID();
+  Reflect.set(req, "requestId", requestId);
+  res.setHeader("x-request-id", requestId);
+  const startedAt = Date.now();
+  res.on("finish", () => {
+    if (req.path === "/api/health") return;
+    console.info(JSON.stringify({
+      ts: new Date().toISOString(),
+      level: "info",
+      event: "http_request",
+      requestId,
+      method: req.method,
+      path: req.path,
+      statusCode: res.statusCode,
+      durationMs: Date.now() - startedAt
+    }));
+  });
+  next();
+});
+
 app.use(cors(buildCorsOptions()));
 app.post("/api/integrations/stripe/webhook", express.raw({ type: "application/json" }), async (req, res, next) => {
   try {
@@ -664,9 +686,20 @@ app.post("/api/integrations/stripe/sync", async (req, res, next) => {
   }
 });
 
-app.use((error: unknown, _req: express.Request, res: express.Response, _next: express.NextFunction) => {
+app.use((error: unknown, req: express.Request, res: express.Response, _next: express.NextFunction) => {
   const err = error as { message?: string; status?: number };
-  res.status(err.status ?? 500).json({ error: err.message ?? "Unexpected server error" });
+  const requestId = String(Reflect.get(req, "requestId") ?? "");
+  console.error(JSON.stringify({
+    ts: new Date().toISOString(),
+    level: "error",
+    event: "request_failure",
+    requestId,
+    method: req.method,
+    path: req.path,
+    statusCode: err.status ?? 500,
+    message: err.message ?? "Unexpected server error"
+  }));
+  res.status(err.status ?? 500).json({ error: err.message ?? "Unexpected server error", requestId });
 });
 
 void (async () => {
