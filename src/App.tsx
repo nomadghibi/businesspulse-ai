@@ -2,7 +2,7 @@ import { AlertTriangle, ArrowRight, BarChart3, Bot, CheckCircle2, Database, File
 import { useEffect, useMemo, useRef, useState } from "react";
 import { Area, AreaChart, Bar, BarChart, CartesianGrid, ResponsiveContainer, Tooltip, XAxis, YAxis } from "recharts";
 import type { AiAnswer, ColumnMapping, CsvPreview, DatasetType, FileUpload, MetricsResponse, Organization, Recommendation, Report } from "../shared/types";
-import { askAi, changePassword, clearToken, commitUploadCsv, createCheckout, createRecommendationFromAnswer, type AppUser, generateReport, getAlerts, getMetrics, getOnboardingStatus, getOrganization, getRecommendations, getReports, getUploads, getUsers, inviteUser, login, logout, type OnboardingStatus, previewUploadCsv, requestDemo, setToken, startTrial, syncStripe, trackEvent, trackPublicEvent, updateRecommendationStatus, updateUserRole, updateUserStatus } from "./api";
+import { askAi, changePassword, clearToken, commitUploadCsv, createCheckout, createRecommendationFromAnswer, type AppUser, generateReport, getAlerts, getMetrics, getOnboardingStatus, getOpsMetrics, getOrganization, getRecommendations, getReports, getUploads, getUsers, inviteUser, login, logout, type OnboardingStatus, type OpsMetricsResponse, previewUploadCsv, requestDemo, setToken, startTrial, syncStripe, trackEvent, trackPublicEvent, updateRecommendationStatus, updateUserRole, updateUserStatus } from "./api";
 import { allowedTabs, datasetTargetFields, datasetTypes, normalizeTab, type AppTab } from "./app/constants";
 import { alignRangeToToday, canShiftForward, clampDateToToday, dateDaysAgo, dateRangeDaysAgo, dateWindowDays, initialDateRange, isValidDateRange, readUrlViewState, shiftDateRangeWithoutFuture } from "./app/dateState";
 import { Empty, escapeCsv, formatLastUpdated, formatTimeToFirstInsight, Panel, StatusItem, summaryLine } from "./app/viewUtils";
@@ -1811,6 +1811,9 @@ function Settings({ onSync, syncMessage, users, onUsersChanged }: { onSync: () =
   const [invitePassword, setInvitePassword] = useState("changeme123");
   const [busy, setBusy] = useState(false);
   const [billingMsg, setBillingMsg] = useState("");
+  const [opsMetrics, setOpsMetrics] = useState<OpsMetricsResponse | null>(null);
+  const [opsBusy, setOpsBusy] = useState(false);
+  const [opsError, setOpsError] = useState("");
   const [userQuery, setUserQuery] = useState(() => localStorage.getItem("bp_users_query") ?? "");
   const [statusFilter, setStatusFilter] = useState<"all" | "active" | "disabled">(
     () => (localStorage.getItem("bp_users_status_filter") as "all" | "active" | "disabled") ?? "all"
@@ -1830,6 +1833,22 @@ function Settings({ onSync, syncMessage, users, onUsersChanged }: { onSync: () =
     localStorage.setItem("bp_users_query", userQuery);
     localStorage.setItem("bp_users_status_filter", statusFilter);
   }, [userQuery, statusFilter]);
+
+  useEffect(() => {
+    void refreshOpsMetrics();
+  }, []);
+
+  async function refreshOpsMetrics() {
+    setOpsBusy(true);
+    setOpsError("");
+    try {
+      setOpsMetrics(await getOpsMetrics());
+    } catch (error) {
+      setOpsError(error instanceof Error ? error.message : "Unable to load ops metrics.");
+    } finally {
+      setOpsBusy(false);
+    }
+  }
 
   function clearUserFilters() {
     setUserQuery("");
@@ -1961,6 +1980,43 @@ function Settings({ onSync, syncMessage, users, onUsersChanged }: { onSync: () =
         <div className="stack">
           <p>Reset saved filters, date ranges, and Ask AI draft for this browser session.</p>
           <button className="align-start" onClick={resetLocalPreferences}>Reset Local Preferences</button>
+        </div>
+      </Panel>
+      <Panel title="Operations">
+        <div className="stack">
+          <div className="upload-row">
+            <button onClick={() => void refreshOpsMetrics()} disabled={opsBusy}>
+              {opsBusy ? "Refreshing..." : "Refresh Ops Metrics"}
+            </button>
+            {opsMetrics ? <span>Uptime: {Math.floor(opsMetrics.uptimeSeconds / 60)}m</span> : null}
+          </div>
+          {opsError ? <div className="notice">{opsError}</div> : null}
+          {opsMetrics ? (
+            <>
+              <div className="upload-row">
+                <span>Total requests: {opsMetrics.requests.total}</span>
+                <span>5xx errors: {opsMetrics.requests.errors5xx}</span>
+                <span>2xx: {opsMetrics.requests.byStatusClass["2xx"]}</span>
+                <span>4xx: {opsMetrics.requests.byStatusClass["4xx"]}</span>
+                <span>5xx: {opsMetrics.requests.byStatusClass["5xx"]}</span>
+              </div>
+              <div className="upload-row">
+                <span>Login guard buckets: {opsMetrics.activeGuards.loginAttemptBuckets}</span>
+                <span>Public limiter buckets: {opsMetrics.activeGuards.publicRateLimitBuckets}</span>
+                <span>Webhook in-flight: {opsMetrics.activeGuards.inFlightWebhookEvents}</span>
+              </div>
+              <div className="table">
+                <div className="table-head"><span>Hot Path</span><span>Requests</span></div>
+                {opsMetrics.hottestPaths.map((row) => (
+                  <div className="table-row" key={row.path}>
+                    <span>{row.path}</span>
+                    <span>{row.count}</span>
+                  </div>
+                ))}
+                {!opsMetrics.hottestPaths.length ? <Empty text="No request traffic recorded yet." /> : null}
+              </div>
+            </>
+          ) : null}
         </div>
       </Panel>
     </div>

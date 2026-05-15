@@ -240,3 +240,23 @@ export function createCheckout(plan: "starter" | "growth" | "pro") {
     body: JSON.stringify({ plan })
   });
 }
+
+export interface OpsMetricsResponse {
+  startedAt: string;
+  uptimeSeconds: number;
+  requests: {
+    total: number;
+    errors5xx: number;
+    byStatusClass: Record<"2xx" | "3xx" | "4xx" | "5xx", number>;
+  };
+  activeGuards: {
+    loginAttemptBuckets: number;
+    publicRateLimitBuckets: number;
+    inFlightWebhookEvents: number;
+  };
+  hottestPaths: Array<{ path: string; count: number }>;
+}
+
+export function getOpsMetrics() {
+  return request<OpsMetricsResponse>("/ops/metrics");
+}
